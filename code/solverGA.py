@@ -11,7 +11,7 @@ class GASolver():
         self.instance = instance
         self.prng = random.Random(seed)
         
-        self.lengths_jobs = [len(job) for job in self.instance.tasks]
+        self.lengths_jobs = [len(job) for job in self.instance.tasks] # number of tasks in each job
         self.num_tasks = sum(self.lengths_jobs) 
         
         self.best_schedule = None
@@ -23,9 +23,9 @@ class GASolver():
             return False
             
         # Check if each job appears the correct number of times
-        job_counts = collections.Counter(chromosome)
+        job_counts = collections.Counter(chromosome) # count of each job
         for job_id, expected_count in enumerate(self.lengths_jobs):
-            if job_counts[job_id] != expected_count:
+            if job_counts[job_id] != expected_count: # if job appears more or less than expected
                 return False
                 
         return True
@@ -40,7 +40,7 @@ class GASolver():
             return start
             
         # Sort machine tasks by start time
-        sorted_tasks = sorted(machine_tasks, key=lambda x: x.start)
+        sorted_tasks = sorted(machine_tasks, key=lambda x: x.start_time)
         
         # Try to fit the task in gaps between existing tasks
         for i in range(len(sorted_tasks) + 1):
@@ -48,20 +48,20 @@ class GASolver():
             
             # Check if we can place before first task
             if i == 0:
-                if current_start + duration <= sorted_tasks[0].start:
+                if current_start + duration <= sorted_tasks[0].start_time:
                     return current_start
                 continue
                 
             # Check if we can place after last task
             if i == len(sorted_tasks):
-                return max(current_start, sorted_tasks[-1].start + sorted_tasks[-1].duration)
+                return max(current_start, sorted_tasks[-1].start_time + sorted_tasks[-1].duration)
                 
             # Check if we can place between tasks
             prev_task = sorted_tasks[i-1]
             next_task = sorted_tasks[i]
-            earliest_possible = max(current_start, prev_task.start + prev_task.duration)
+            earliest_possible = max(current_start, prev_task.start_time + prev_task.duration)
             
-            if earliest_possible + duration <= next_task.start:
+            if earliest_possible + duration <= next_task.start_time:
                 return earliest_possible
                 
         # If we couldn't find a gap, place after the last task
@@ -82,22 +82,22 @@ class GASolver():
             machine, duration = self.instance.tasks[job_id][task_id]
             
             # Find earliest possible start time considering both job precedence and machine availability
-            start = self.find_earliest_start(
+            start_time = self.find_earliest_start(
                 machine, job_id, task_id, 
                 job_ends, schedule[machine], duration
             )
             
             task = Task(
-                start=start,
-                job=job_id,
-                index=task_id,
+                start_time=start_time,
+                job_id=job_id,
+                task_id=task_id,
                 duration=duration,
                 machine=machine
             )
             
             schedule[machine].append(task)
             job_counts[job_id] += 1
-            job_ends[job_id] = start + duration
+            job_ends[job_id] = start_time + duration
             
         # Validate the schedule
         if not self.validate_schedule(schedule):
@@ -110,18 +110,18 @@ class GASolver():
         """Validate that the schedule respects all constraints"""
         # Check for machine conflicts
         for machine, tasks in schedule.items():
-            sorted_tasks = sorted(tasks, key=lambda x: x.start)
+            sorted_tasks = sorted(tasks, key=lambda x: x.start_time)
             for i in range(len(sorted_tasks) - 1):
                 current = sorted_tasks[i]
                 next_task = sorted_tasks[i + 1]
-                if current.start + current.duration > next_task.start:
+                if current.start_time + current.duration > next_task.start_time:
                     return False
                     
         # Check job precedence
         job_task_times = collections.defaultdict(list)
         for machine, tasks in schedule.items():
             for task in tasks:
-                job_task_times[task.job].append((task.index, task.start, task.duration))
+                job_task_times[task.job_id].append((task.task_id, task.start_time, task.duration))
                 
         for job_id, task_times in job_task_times.items():
             sorted_tasks = sorted(task_times, key=lambda x: x[0])  # Sort by task index
@@ -222,13 +222,16 @@ class GASolver():
         return self.best_schedule, self.best_makespan
 
     def custom_crossover(self, random, candidates, args):
-        """Custom crossover operator that maintains solution validity"""
+        """Custom crossover operator: Order Crossover (OX)""" 
         children = []
+        # the candidates are the chromosomes to be crossed (chromosomes are the schedules)
         for i in range(0, len(candidates) - 1, 2):
+            # Select parents
             mom = candidates[i]
             dad = candidates[i + 1]
             
-            crossover_point = random.randint(0, len(mom) - 1)
+            # Perform crossover
+            crossover_point = random.randint(0, len(mom) - 1) # select crossover point
             child1 = mom[:crossover_point] + dad[crossover_point:]
             child2 = dad[:crossover_point] + mom[crossover_point:]
             
@@ -236,43 +239,49 @@ class GASolver():
             child1 = self.repair_chromosome(child1)
             child2 = self.repair_chromosome(child2)
             
+            # Add children to the list
             children.extend([child1, child2])
             
+        # Add the last candidate if the population size is odd
         if len(candidates) % 2 == 1:
             children.append(candidates[-1])
             
         return children
         
     def custom_mutation(self, random, candidates, args):
-        """Custom mutation operator that maintains solution validity"""
+        """Custom mutation operator: Swap Mutation"""
+        # Swap two random tasks in the chromosome
         mutants = []
         for candidate in candidates:
             mutant = candidate[:]
             if random.random() < args["mutation_rate"]:
-                idx1, idx2 = random.sample(range(len(mutant)), 2)
-                mutant[idx1], mutant[idx2] = mutant[idx2], mutant[idx1]
+                idx1, idx2 = random.sample(range(len(mutant)), 2) # select two random indices
+                mutant[idx1], mutant[idx2] = mutant[idx2], mutant[idx1] # swap jobs
                 
                 # Repair if invalid
                 if not self.is_valid_chromosome(mutant):
                     mutant = self.repair_chromosome(mutant)
                     
-            mutants.append(mutant)
+            mutants.append(mutant) # add mutant to the list
             
         return mutants
     
 # ----------------- Main -----------------
 
-INSTANCE = '../instances/abz5'
+INSTANCE = '../instances/long-js-600000-100-10000-1'
+# INSTANCE = '../instances/abz5'
 
 def main():
-    # Load instance
+    # Load and validate instance
+    print(f"Loading instance from {INSTANCE}...")
     instance = load_instance(INSTANCE)
+    print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
     
     # Initialize and run solver
     solver = GASolver(instance, seed=10)
     schedule, makespan = solver.solve(None)
     
-    print(f"\nBest makespan: {makespan}")
+    print(f"\Makespan: {makespan}")
     
     # Validate final schedule
     is_valid = solver.validate_schedule(schedule)
@@ -281,7 +290,7 @@ def main():
     # Log schedule to file
     log_schedule(schedule, makespan, filename='scheduleGA.txt')
     
-    # Visualize schedule
+    # Visualize and save schedule
     visualize_schedule(schedule, makespan, instance, filename='scheduleGA.png')
 
 if __name__ == '__main__':
