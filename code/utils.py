@@ -2,28 +2,27 @@ from matplotlib import pyplot as plt
 import numpy as np
 from typing import NamedTuple
 
-class Task(NamedTuple):
-    start: int
-    job: int
-    index: int
-    duration: int
-    machine: int  # track which machine processes this task
+class Task():
+    """Represents a job task with timing and resource information"""
+    def __init__(self, start_time: int, job_id: int, task_id: int, duration: int, machine: int):
+        self.start_time = start_time
+        self.job_id = job_id
+        self.task_id = task_id
+        self.duration = duration
+        self.machine = machine
+        self.end_time = start_time + duration
     
     def __repr__(self):
-        return f"({self.start}, {self.job}, {self.index}, {self.duration})"
+        return f"({self.start_time}, {self.job_id}, {self.task_id}, {self.duration})"
 
 
 class Instance():
     '''Instance of Job Shop Scheduling Problem'''
-    def __init__(self, name, num_jobs, num_machines):
+    def __init__(self, name, num_jobs, num_machines, tasks):
         self.name = name
         self.num_jobs = num_jobs
         self.num_machines = num_machines
-        self.tasks = [] # task = (machine_id, processing_time)
-        
-    def add_job_tasks(self, tasks):
-        # tasks = [(machine_id, processing_time), ...]
-        self.tasks.append(tasks) 
+        self.tasks = tasks # task = (machine_id, processing_time)
         
     def __str__(self):
         return f"{self.name}: {self.num_jobs} jobs, {self.num_machines} machines"
@@ -32,26 +31,35 @@ class Instance():
         return f"{self.name}: {self.num_jobs} jobs, {self.num_machines} machines"
     
 def load_instance(filename):
-    '''Load instance from file'''
+    """Load and parse a JSP instance file"""
+    tasks = []
+    num_machines = None
+    
     with open(filename, 'r') as f:
-        lines = f.readlines()
+        lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    
+    # Parse first line for dimensions of the instance : num_jobs, num_machines    
+    num_jobs, num_machines = map(int, lines[0].split())
+    
+    # Parse each job's tasks
+    for line in lines[1:]:
+        if len(tasks) >= num_jobs:
+            break
+            
+        numbers = list(map(int, line.split()))
+        job_tasks = []
+        i = 0
         
-    line_idx = 1 # skip first line
-    # read instance name
-    name = lines[line_idx].split()[2] # '# instance name'
-    line_idx = 4 # skip second line
-    # read number of jobs and machines
-    num_jobs, num_machines = map(int, lines[line_idx].split()) # 'num_jobs num_machines'
-    
-    # create instance
-    instance = Instance(name, num_jobs, num_machines)
-    
-    # read tasks
-    for job_id in range(num_jobs):
-        line_idx += 1
-        tasks = list(map(int, lines[line_idx].split()))
-        tasks = [(tasks[i], tasks[i+1]) for i in range(0, len(tasks), 2)]
-        instance.add_job_tasks(tasks)
+        while i < len(numbers) and numbers[i] >= 0:
+            machine, duration = numbers[i:i+2]
+            job_tasks.append((machine, duration))
+            i += 2
+            
+        if job_tasks:
+            tasks.append(job_tasks)
+
+    # Create instance object
+    instance = Instance(filename, num_jobs, num_machines, tasks)
         
     return instance
 
@@ -66,13 +74,13 @@ def visualize_schedule(schedule, makespan, instance, filename='schedule.png'):
         for task in tasks:
             plt.barh(y=machine, 
                     width=task.duration,
-                    left=task.start,
-                    color=colors[task.job],
+                    left=task.start_time,
+                    color=colors[task.job_id],
                     edgecolor='black')
             
             # Add task labels
-            plt.text(task.start + task.duration/2, machine,
-                    f'J{task.job}',
+            plt.text(task.start_time + task.duration/2, machine,
+                    f'J{task.job_id}',
                     ha='center', va='center')
             
     plt.title(f'Job Shop Schedule (Makespan: {makespan})')
@@ -89,7 +97,6 @@ def log_schedule(schedule, makespan, filename='schedule.txt'):
         f.write(f"Best makespan: {makespan}\n")
         f.write("Schedule:\n")
         for machine, tasks in schedule.items():
-            tasks.sort()
             f.write(f"Machine {machine}: {tasks}\n")
         f.write("\n")
         f.close()
