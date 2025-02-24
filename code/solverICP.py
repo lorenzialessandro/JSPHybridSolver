@@ -94,6 +94,7 @@ class ICPSolver:
         return schedule, makespan_value, solver, status
 
 # ----------------- Main -----------------
+
 INSTANCE = '../instances/long-js-600000-100-10000-1'
 INSTANCE = '../instances/abz5'
 
