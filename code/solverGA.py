@@ -159,6 +159,11 @@ class GASolver():
         
     def generator(self, random, args):
         '''Generate valid chromosome'''
+        # Use initial population if provided
+        if args['initial_population'] is not None:
+            return args['initial_population'][0]
+        
+        # Generate random chromosome as initial population
         chromosome = []
         remaining = self.lengths_jobs.copy()
         
@@ -197,6 +202,8 @@ class GASolver():
         if num_generations % 100 == 0:
             print(f"Generation {num_generations}: Best makespan = {self.best_makespan}")
             
+            
+    
     def solve(self, args):
         '''Solve JSP instance using GA'''
         ga = ec.GA(random=self.prng)
@@ -206,17 +213,22 @@ class GASolver():
         ga.variator = [self.custom_crossover, self.custom_mutation]
         ga.selector = ec.selectors.tournament_selection
         
+        if args is not None and 'initial_population' in args:
+            print("Using initial population from args")
+            initial_population = args['initial_population']
+        
+        
         final_pop = ga.evolve(
             generator=self.generator,
             evaluator=self.evaluator,
-            pop_size=100,
+            pop_size=200,
             maximize=False,
             bounder=ec.Bounder(0, self.instance.num_jobs - 1),
             max_generations=1000,
             mutation_rate=0.1,
             crossover_rate=0.9,
-            num_selected=100,
-            tournament_size=2
+            num_selected=50,
+            initial_population=initial_population
         )
         
         return self.best_schedule, self.best_makespan
