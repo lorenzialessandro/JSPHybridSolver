@@ -95,8 +95,8 @@ class ICPSolver:
 
 # ----------------- Main -----------------
 
-INSTANCE = '../instances/long-js-600000-100-10000-1'
-INSTANCE = '../instances/abz5'
+INSTANCE = '../instances/long-js-600000-100-10000-1.data'
+INSTANCE = '../instances/abz5.data'
 
 def main():
     # Load and validate instance
