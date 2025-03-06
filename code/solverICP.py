@@ -2,6 +2,9 @@ import collections
 import numpy as np
 from typing import List, Dict, Tuple 
 from ortools.sat.python import cp_model
+import time             # Time tracking
+import tracemalloc      # Memory tracking
+import argparse
 
 from utils import *
 
@@ -13,6 +16,8 @@ class ICPSolver:
         
     def solve(self):
         '''Solve JSP instance using OR-Tools (CP-SAT)'''
+        
+        max_time_in_seconds = self.solver.parameters.max_time_in_seconds # Time limit
         
         # Calculate reasonable horizon
         horizon = sum(sum(task[1] for task in job) for job in self.instance.tasks)
@@ -64,7 +69,7 @@ class ICPSolver:
         # Solve
         print("Solving JSP instance using OR-Tools (CP-SAT)...")
         solver = cp_model.CpSolver()
-        # solver.parameters.max_time_in_seconds = 600  # 10 minutes time limit
+        solver.parameters.max_time_in_seconds = max_time_in_seconds # Set Time Limit
         status = solver.Solve(self.model)
         
         print(f"Status: {solver.StatusName(status)}")
@@ -93,20 +98,39 @@ class ICPSolver:
             
         return schedule, makespan_value, solver, status
 
-# ----------------- Main -----------------
-
-INSTANCE = '../instances/long-js-600000-100-10000-1.data'
-INSTANCE = '../instances/abz5.data'
-
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Job Shop Problem Solver using CP-SAT')
+    parser.add_argument('instance_file', type=str, help='Path to the instance file')
+    parser.add_argument('--time_limit', type=int, default=200, 
+                        help='Time limit in seconds (default: 60)')
+    parser.add_argument('--output', type=str, default='scheduleICP',
+                        help='Base name for output files (default: scheduleICP)')
+    
+    args = parser.parse_args()
+    
     # Load and validate instance
-    print(f"Loading instance from {INSTANCE}...")
-    instance = load_instance(INSTANCE)
+    print(f"Loading instance from {args.instance_file}...")
+    instance = load_instance(args.instance_file)
     print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
     
     # Initialize and run solver
     solver = ICPSolver(instance)
+    solver.solver.parameters.max_time_in_seconds = args.time_limit
+    solver.solver.parameters.random_seed = 10 # for reproducibility
+    tracemalloc.start() # Start memory tracking
+    
+    start_time = time.time()
+    snapshot1 = tracemalloc.take_snapshot()
+    
     schedule, makespan, solver, status = solver.solve()
+    
+    snapshot2 = tracemalloc.take_snapshot()
+    end_time = time.time()
+    
+    cp_time = end_time - start_time
+    cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
+    cp_memory = sum(stat.size_diff for stat in cp_stats)
     
     if status == cp_model.OPTIMAL:
         print("\nOptimal solution found!")
@@ -121,12 +145,14 @@ def main():
     print(f"  - conflicts : {solver.NumConflicts()}")
     print(f"  - branches  : {solver.NumBranches()}")
     print(f"  - wall time : {solver.WallTime():.2f} seconds")
+    print(f"  - time      : {cp_time:.2f} seconds")
+    print(f"  - memory    : {cp_memory / 1024 / 1024:.2f} MB")
     
     # log schedule to file
-    log_schedule(schedule, makespan, 'scheduleICP.txt')
+    # log_schedule(schedule, makespan, f'{args.output}.txt')
     
     # visualize and save schedule
-    visualize_schedule(schedule, makespan, instance, 'scheduleICP.png')
+    # visualize_schedule(schedule, makespan, instance, f'{args.output}.png')
     
 if __name__ == '__main__':
     main()
