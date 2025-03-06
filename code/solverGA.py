@@ -26,6 +26,8 @@ class GASolver():
         self.best_schedule = None
         self.best_makespan = float('inf')
         
+        self.max_time = 60 # default time limit for GA solver
+        
     def is_valid_chromosome(self, chromosome):
         """Validate if a chromosome represents a valid machine-task assignment schedule"""
         # A chromosome is now a list of (job_id, task_id) tuples
