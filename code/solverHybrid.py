@@ -81,6 +81,7 @@ class HybridSolver:
             # (in that case, it's just another copy of the original)
             initial_population.append(mutated)
         
+        return initial_population
         
     def solve(self):
         '''Solve JSP instance using a hybrid approach'''
@@ -140,6 +141,8 @@ class HybridSolver:
         # note if you want to clone all the chromosomes in the initial population, you can use set num_copies = pop_size
         initial_population = self.create_initial_population(base_chromosome, pop_size=50, num_copies=10)
         args = {'initial_population': initial_population}
+        
+        print(initial_population[0])
 
         ga_start_time = time.time() # Start time
         snapshot3 = tracemalloc.take_snapshot() # Memory snapshot
@@ -198,10 +201,10 @@ def main():
     print(f"Total memory: {tot_memory:.2f} MB")
     
     # Log schedule to file
-    # log_schedule(schedule, makespan_ga, f'{args.output}.txt')
+    # log_schedule(schedule, makespan_ga, f'output/{args.output}.txt')
     
     # Visualize and save schedule
-    # visualize_schedule(schedule, makespan_ga, instance, f'{args.output}.png')
+    # visualize_schedule(schedule, makespan_ga, instance, f'output/{args.output}.png')
     
 if __name__ == '__main__':
     main()
