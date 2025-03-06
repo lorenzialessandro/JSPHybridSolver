@@ -141,8 +141,6 @@ class HybridSolver:
         # note if you want to clone all the chromosomes in the initial population, you can use set num_copies = pop_size
         initial_population = self.create_initial_population(base_chromosome, pop_size=50, num_copies=10)
         args = {'initial_population': initial_population}
-        
-        print(initial_population[0])
 
         ga_start_time = time.time() # Start time
         snapshot3 = tracemalloc.take_snapshot() # Memory snapshot
