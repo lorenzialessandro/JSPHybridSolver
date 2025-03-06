@@ -27,7 +27,7 @@ class HybridSolver:
         self.cp_solver.solver.parameters.max_time_in_seconds = time_budget * 0.3 # 30% of time budget
         self.cp_solver.solver.parameters.random_seed = 10
 
-        self.ga_solver = GASolver(instance, seed=123)     # GA solver
+        self.ga_solver = GASolver(instance, seed=123, hybrid=True)     # GA solver
         self.ga_solver.max_time = time_budget * 0.7 # 70% of time budget
         
     def create_initial_population(self, base_chromosome, pop_size=50, num_copies=10):
@@ -170,7 +170,7 @@ class HybridSolver:
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Job Shop Problem Solver using CP-SAT')
-    parser.add_argument('instance_file', type=str, help='Path to the instance file')
+    parser.add_argument('--instance_file', type=str, help='Path to the instance file', default='instances/ClassicBenchmark/jobshop_abz5')
     parser.add_argument('--time_limit', type=int, default=60, 
                         help='Time limit in seconds (default: 60)')
     parser.add_argument('--output', type=str, default='scheduleHybrid',

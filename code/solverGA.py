@@ -10,9 +10,10 @@ import argparse
 from utils import *
 
 class GASolver():
-    def __init__(self, instance, seed):
+    def __init__(self, instance, seed, hybrid):
         self.instance = instance
         self.prng = random.Random(seed)
+        self.hybrid = hybrid
         
         self.lengths_jobs = [len(job) for job in self.instance.tasks] # number of tasks in each job
         self.num_tasks = sum(self.lengths_jobs) # total number of tasks
@@ -218,42 +219,46 @@ class GASolver():
             return self.generator(self.prng, None)
             
         return valid_chromosome
-        
+    
+
     def generator(self, random, args):
-        '''Generate valid chromosome with (job_id, task_id) tuples'''
-        # Start with ordered tasks for each job
-        all_tasks = []
-        for job_id in range(self.instance.num_jobs):
-            for task_id in range(self.lengths_jobs[job_id]):
-                all_tasks.append((job_id, task_id))
+        if self.hybrid:
+            return args['initial_population'].pop()
+        else:
+            '''Generate valid chromosome with (job_id, task_id) tuples'''
+            # Start with ordered tasks for each job
+            all_tasks = []
+            for job_id in range(self.instance.num_jobs):
+                for task_id in range(self.lengths_jobs[job_id]):
+                    all_tasks.append((job_id, task_id))
+                    
+            # Shuffle maintaining precedence constraints
+            chromosome = []
+            available_tasks = []
+            
+            # Initialize available tasks with first task of each job
+            for job_id in range(self.instance.num_jobs):
+                available_tasks.append((job_id, 0))
                 
-        # Shuffle maintaining precedence constraints
-        chromosome = []
-        available_tasks = []
-        
-        # Initialize available tasks with first task of each job
-        for job_id in range(self.instance.num_jobs):
-            available_tasks.append((job_id, 0))
+            # Build chromosome by selecting random available tasks
+            job_progress = [0] * self.instance.num_jobs
             
-        # Build chromosome by selecting random available tasks
-        job_progress = [0] * self.instance.num_jobs
-        
-        while available_tasks:
-            # Select random available task
-            idx = random.randint(0, len(available_tasks) - 1)
-            job_id, task_id = available_tasks.pop(idx)
-            
-            # Add to chromosome
-            chromosome.append((job_id, task_id))
-            
-            # Update job progress
-            job_progress[job_id] += 1
-            
-            # Add next task from this job if available
-            if job_progress[job_id] < self.lengths_jobs[job_id]:
-                available_tasks.append((job_id, job_progress[job_id]))
+            while available_tasks:
+                # Select random available task
+                idx = random.randint(0, len(available_tasks) - 1)
+                job_id, task_id = available_tasks.pop(idx)
                 
-        return chromosome
+                # Add to chromosome
+                chromosome.append((job_id, task_id))
+                
+                # Update job progress
+                job_progress[job_id] += 1
+                
+                # Add next task from this job if available
+                if job_progress[job_id] < self.lengths_jobs[job_id]:
+                    available_tasks.append((job_id, job_progress[job_id]))
+                    
+            return chromosome
         
     def evaluator(self, candidates, args):
         '''Evaluate chromosome'''
@@ -270,7 +275,7 @@ class GASolver():
         
     def observer(self, population, num_generations, num_evaluations, args):
         '''Observer function to track best solution'''
-        best = min(population)
+        best = min(population, key=lambda l: l.fitness)
         schedule, makespan = self.decoder(best.candidate, args)
         
         if makespan < self.best_makespan:
@@ -388,7 +393,7 @@ def main():
     print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
     
     # Initialize and run solver
-    solver = GASolver(instance, seed=10)
+    solver = GASolver(instance, seed=10, hybrid=False)
     
     start_time = time.time()    # track time
     tracemalloc.start()         # track memory
