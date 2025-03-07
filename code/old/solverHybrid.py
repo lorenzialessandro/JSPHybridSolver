@@ -6,9 +6,9 @@ import tracemalloc      # Memory tracking
 import argparse
 import random
 
-from solverICP import *             # JSP solver using OR-Tools CP-SAT
-from solverICP_limiter import *     # JSP solver using OR-Tools CP-SAT with solution limit
-from solverGA import *              # JSP solver using Genetic Algorithm
+# from solverICPlimit import *    # JSP solver using OR-Tools CP-SAT 
+from solverICP import *          # JSP solver using OR-Tools CP-SAT
+from solverGA import *          # JSP solver using Genetic Algorithm
 from utils import *
 
 '''
@@ -20,22 +20,17 @@ This way, the GA solver can start from a good solution and improve it further.
 '''
 
 class HybridSolver:
-    def __init__(self, instance, use_limiter = False, time_budget = 2000, limit=1):
+    def __init__(self, instance, time_budget = 2000):
         self.instance = instance
         
-        if use_limiter:
-            self.cp_solver = ICPSolverLimiter(instance, limit)   # CP-SAT solver with solution limit
-        else:
-            self.cp_solver = ICPSolver(instance)   # CP-SAT solver with time limit
-            self.cp_solver.solver.parameters.max_time_in_seconds = time_budget * 0.3 # 30% of time budget
-        
+        self.cp_solver = ICPSolver(instance)    # CP-SAT solver
+        self.cp_solver.solver.parameters.max_time_in_seconds = time_budget * 0.3 # 30% of time budget
         self.cp_solver.solver.parameters.random_seed = 10
 
         self.ga_solver = GASolver(instance, seed=123, hybrid=True)     # GA solver
-        self.ga_solver.max_time = time_budget # 70% of time budget
+        self.ga_solver.max_time = time_budget * 0.7 # 70% of time budget
         
-    def create_initial_population(self, base_chromosome, pop_size=50, 
-                                  num_copies=1,  num_random=1):
+    def create_initial_population(self, base_chromosome, pop_size=50, num_copies=1,  num_random=1):
         '''Create initial population for GA solver
         
         args:
@@ -51,32 +46,48 @@ class HybridSolver:
             
         # Add random chromosomes using generator
         for _ in range(num_random):
-            initial_population.append(self.ga_solver.generator_chromosome(self.ga_solver.prng, None))
+            initial_population.append(self.ga_solver.gen_u(self.ga_solver.prng, None))
             
-        # Add remaining population applying mutation to the base chromosome
+        # Add gradually mutated versions for the rest of the population
         for i in range(pop_size - num_copies - num_random):
             mutated = base_chromosome.copy()
             
-            # Mutation attempts for each chromosome (1 to 5)
-            attempts = random.randint(1, 5)
-            for _ in range(attempts):
-                # Choose two random positions to swap
-                pos1 = random.randint(0, len(mutated) - 1)
-                pos2 = random.randint(0, len(mutated) - 1)
-                
-                # Swap
-                mutated[pos1], mutated[pos2] = mutated[pos2], mutated[pos1]
+            # Use a progressive mutation rate
+            # 1% to 5% mutation
+            # mutation_rate = min(0.05, 0.01 + (i / pop_size * 0.04))  
+            # %30 to %50 of the chromosome will be mutated
+            mutation_rate = min(0.5, 0.3 + (i / pop_size * 0.2))
+            mutation_count = max(1, int(len(mutated) * mutation_rate))
             
-                # Check if still valid
-                if self.ga_solver.is_valid_chromosome(mutated):
-                    break
-                else:
-                    # Undo the swap and try again
+            # Apply mutations that maintain precedence constraints
+            for _ in range(mutation_count):
+                max_attempts = 10
+                for attempt in range(max_attempts):
+                    # Select two random positions to swap
+                    pos1, pos2 = random.sample(range(len(mutated)), 2)
+                    
+                    # Get the tasks at these positions
+                    task1 = mutated[pos1]
+                    task2 = mutated[pos2]
+                    
+                    # Skip if they're from the same job (maintain precedence)
+                    if task1[0] == task2[0]:
+                        continue
+                    
+                    # Try the swap
                     mutated[pos1], mutated[pos2] = mutated[pos2], mutated[pos1]
-    
+                    
+                    # Check if still valid
+                    if self.ga_solver.is_valid_chromosome(mutated):
+                        break
+                    else:
+                        # Undo the swap and try again
+                        mutated[pos1], mutated[pos2] = mutated[pos2], mutated[pos1]
+            
             # Add to population even if no valid mutation was found
+            # (in that case, it's just another copy of the original)
             initial_population.append(mutated)
-
+        
         return initial_population
         
     def solve(self):
@@ -111,9 +122,6 @@ class HybridSolver:
             print("\nCP-SAT solver could not find a solution. Exiting...")
             return None, 0, 0, 0, 0
         
-        # visualize and save schedule
-        visualize_schedule(schedule_icp, makespan_icp, self.instance, f'output/schedule_icp.png')
-        
         # ----------------- Step 2 : GA solver -----------------
         # Use the solution found by CP-SAT solver as initial population for GA solver
         print(f"\nSolving using GA solver...")
@@ -128,8 +136,8 @@ class HybridSolver:
         # Sort tasks by start time to get the execution sequence
         all_tasks.sort(key=lambda x: x.start_time)
         
-        # Create chromosome as list of job_id representing the execution sequence
-        base_chromosome = [task.job_id for task in all_tasks]    
+        # Create chromosome with (job_id, task_id) tuples
+        base_chromosome = [(task.job_id, task.task_id) for task in all_tasks]
         
         # Verify that the base chromosome is valid
         if not self.ga_solver.is_valid_chromosome(base_chromosome):
@@ -138,7 +146,7 @@ class HybridSolver:
         
         # Create initial population for GA solver
         # note if you want to clone all the chromosomes in the initial population, you can use set num_copies = pop_size
-        initial_population = self.create_initial_population(base_chromosome, pop_size=300, num_copies=1, num_random=30)
+        initial_population = self.create_initial_population(base_chromosome, pop_size=100, num_copies=1, num_random=80)
         args = {'initial_population': initial_population}
 
         ga_start_time = time.time() # Start time
@@ -170,16 +178,12 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Job Shop Problem Solver using CP-SAT')
     parser.add_argument('--instance_file', type=str, help='Path to the instance file', default='../instances/ClassicBenchmark/jobshop_abz5')
-    parser.add_argument('--time_limit', type=int, help='Time limit in seconds (default: 60)', default=60)
-    parser.add_argument('--limit', type=int, help='Solution limit for CP-SAT solver', default=0)
+    parser.add_argument('--time_limit', type=int, default=60, 
+                        help='Time limit in seconds (default: 60)')
     parser.add_argument('--output', type=str, default='scheduleHybrid',
                         help='Base name for output files (default: scheduleHybrid)')
     
     args = parser.parse_args()
-    
-    # if the solution limit is provided, use ICP solver with solution limit
-    # otherwise, use ICP solver with time limit
-    use_limiter = args.limit > 0 # use solution limit
     
     # Load and validate instance
     print(f"Loading instance from {args.instance_file}...")
@@ -187,7 +191,7 @@ def main():
     print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
     
     # Initialize and run solver
-    solver = HybridSolver(instance, use_limiter = use_limiter, time_budget=args.time_limit, limit=args.limit)
+    solver = HybridSolver(instance, time_budget=args.time_limit)
     schedule, makespan_ga, makespan_icp, tot_time, tot_memory = solver.solve()
     
     print(f"----------------------------------")

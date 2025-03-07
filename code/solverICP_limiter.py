@@ -8,17 +8,27 @@ import argparse
 
 from utils import *
 
-class ICPSolver:
-    def __init__(self, instance):
+class Limiter(cp_model.CpSolverSolutionCallback):
+    def __init__(self, limit: int):
+        cp_model.CpSolverSolutionCallback.__init__(self)
+        self.__solution_count = 0
+        self.__solution_limit = limit
+
+    def on_solution_callback(self) -> None:
+        self.__solution_count += 1
+        if self.__solution_count >= self.__solution_limit:
+            print(f"Limit of {self.__solution_limit} solutions reached. Stopping search.")
+            self.stop_search()
+
+class ICPSolverLimiter:
+    def __init__(self, instance, limit: int = 1):
         self.instance = instance
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
+        self.limit = limit
         
     def solve(self):
         '''Solve JSP instance using OR-Tools (CP-SAT)'''
-        
-        max_time_in_seconds = self.solver.parameters.max_time_in_seconds # Time limit
-        
         # Calculate reasonable horizon
         horizon = sum(sum(task[1] for task in job) for job in self.instance.tasks)
         
@@ -69,8 +79,8 @@ class ICPSolver:
         # Solve
         print("Solving JSP instance using OR-Tools (CP-SAT)...")
         solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = max_time_in_seconds # Set Time Limit
-        status = solver.Solve(self.model)
+        limiter = Limiter(self.limit) # Set solution limit
+        status = solver.Solve(self.model, limiter)
         
         print(f"Status: {solver.StatusName(status)}")
         
@@ -102,8 +112,8 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Job Shop Problem Solver using CP-SAT')
     parser.add_argument('--instance_file', type=str, help='Path to the instance file')
-    parser.add_argument('--time_limit', type=int, default=0, 
-                        help='Time limit in seconds (default: 0). 0 means no time limit')
+    parser.add_argument('--time_limit', type=int, default=60, 
+                        help='Time limit in seconds (default: 60)')
     parser.add_argument('--output', type=str, default='scheduleICP',
                         help='Base name for output files (default: scheduleICP)')
     
@@ -115,9 +125,7 @@ def main():
     print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
     
     # Initialize and run solver
-    solver = ICPSolver(instance)
-    if args.time_limit != 0: # if time limit 0 then no time limit is set so it will run until optimal solution is found
-        solver.solver.parameters.max_time_in_seconds = args.time_limit
+    solver = ICPSolverLimiter(instance)
     solver.solver.parameters.random_seed = 10 # for reproducibility
     tracemalloc.start() # Start memory tracking
     
@@ -153,7 +161,7 @@ def main():
     # log_schedule(schedule, makespan, f'{args.output}.txt')
     
     # visualize and save schedule
-    visualize_schedule(schedule, makespan, instance, f'output/{args.output}.png')
+    # visualize_schedule(schedule, makespan, instance, f'{args.output}.png')
     
 if __name__ == '__main__':
     main()

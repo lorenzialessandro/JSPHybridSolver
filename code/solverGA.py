@@ -9,125 +9,78 @@ import argparse
 
 from utils import *
 
+
 class GASolver():
     def __init__(self, instance, seed, hybrid):
         self.instance = instance
         self.prng = random.Random(seed)
         self.hybrid = hybrid
-        
-        self.lengths_jobs = [len(job) for job in self.instance.tasks] # number of tasks in each job
-        self.num_tasks = sum(self.lengths_jobs) # total number of tasks
-        
+
+        # number of tasks in each job
+        self.lengths_jobs = [len(job) for job in self.instance.tasks]
+        self.num_tasks = sum(self.lengths_jobs)  # total number of tasks
+
         # Create a mapping of tasks to (job_id, task_id)
         self.machine_tasks = collections.defaultdict(list)
         for job_id, job in enumerate(self.instance.tasks):
             for task_id, (machine, _) in enumerate(job):
                 self.machine_tasks[machine].append((job_id, task_id))
-        
+
         self.best_schedule = None
         self.best_makespan = float('inf')
+
+        self.max_time = 60  # default time limit for GA solver
+
+    def is_valid_chromosome(self, chromosome): #OK
+        '''Validate if a chromosome represents a valid job_id sequence'''
+        # A chromosome is now a list of job_id
         
-        self.max_time = 60 # default time limit for GA solver
-        
-    def is_valid_chromosome(self, chromosome):
-        """Validate if a chromosome represents a valid machine-task assignment schedule"""
-        # A chromosome is now a list of (job_id, task_id) tuples
-        
-        # Check if chromosome length is correct
+        # Check if all jobs are present
         if len(chromosome) != self.num_tasks:
             return False
-            
-        # Check if each job's tasks appear in the correct number
-        job_task_counts = collections.defaultdict(int)
-        for job_id, task_id in chromosome:
-            job_task_counts[job_id] += 1
-            
+        
+        # Check if all jobs are present the correct number of times
+        job_counts = collections.Counter(chromosome)
         for job_id, expected_count in enumerate(self.lengths_jobs):
-            if job_task_counts[job_id] != expected_count:
+            if job_counts[job_id] != expected_count:
                 return False
-                
-        # Check if machine assignments are valid
-        machine_assignment_valid = True
-        for i, (job_id, task_id) in enumerate(chromosome):
-            # Verify job and task indices are valid
-            if job_id >= self.instance.num_jobs or task_id >= self.lengths_jobs[job_id]:
-                return False
-                
-        # Check if task precedence within jobs is maintained
-        task_positions = {}
-        for pos, (job_id, task_id) in enumerate(chromosome):
-            if job_id not in task_positions:
-                task_positions[job_id] = {}
-            task_positions[job_id][task_id] = pos
             
-        for job_id in range(self.instance.num_jobs):
-            for task_id in range(1, self.lengths_jobs[job_id]):
-                if task_positions[job_id][task_id - 1] > task_positions[job_id][task_id]:
-                    return False
-                    
-        return True
+        return True # valid chromosome
+        
+    def decode_to_task_sequence(self, chromosome): 
+        '''Convert chromosome to task sequence (job_id, task_id)'''
+        task_sequences = []
+        job_task_tracker = [0] * self.instance.num_jobs
+        for job_id in chromosome:
+            task_id = job_task_tracker[job_id]
+            task_sequences.append((job_id, task_id))
+            job_task_tracker[job_id] += 1
+        return task_sequences
 
-    def find_earliest_start(self, machine: int, job_id: int, task_id: int, 
-                          job_ends: List[int], machine_tasks: List[Task], duration: int) -> int:
-        
-        # TODO: check if this function is correct
-        """Find the earliest possible start time for a task considering both job and machine constraints"""
-        # Earliest possible start based on job precedence
-        start = job_ends[job_id] if task_id > 0 else 0
-        
-        if not machine_tasks:
-            return start
-            
-        # Sort machine tasks by start time
-        sorted_tasks = sorted(machine_tasks, key=lambda x: x.start_time)
-        
-        # Try to fit the task in gaps between existing tasks
-        for i in range(len(sorted_tasks) + 1):
-            current_start = start
-            
-            # Check if we can place before first task
-            if i == 0:
-                if current_start + duration <= sorted_tasks[0].start_time:
-                    return current_start
-                continue
-                
-            # Check if we can place after last task
-            if i == len(sorted_tasks):
-                return max(current_start, sorted_tasks[-1].start_time + sorted_tasks[-1].duration)
-                
-            # Check if we can place between tasks
-            prev_task = sorted_tasks[i-1]
-            next_task = sorted_tasks[i]
-            earliest_possible = max(current_start, prev_task.start_time + prev_task.duration)
-            
-            if earliest_possible + duration <= next_task.start_time:
-                return earliest_possible
-                
-        # If we couldn't find a gap, place after the last task
-        return sorted_tasks[-1].start_time + sorted_tasks[-1].duration
-    
-    def decoder(self, chromosome, args):
-        '''Decode chromosome: convert chromosome with (job_id, task_id) tuples to schedule and calculate makespan'''
+    def decoder(self, chromosome, args): 
+        '''Decode chromosome: convert job ID sequence to schedule and calculate makespan'''
         if not self.is_valid_chromosome(chromosome):
             chromosome = self.repair_chromosome(chromosome)
-            if not self.is_valid_chromosome(chromosome):
-                return None, float('inf')
             
-        job_task_tracker = [0] * self.instance.num_jobs  # Track which task is next for each job
-        job_ends = [0] * self.instance.num_jobs          # End time of last scheduled task for each job
-        schedule = collections.defaultdict(list)         # Schedule of tasks on each machine
-        
+        # Convert job_id sequence to (job_id, task_id) sequence
+        task_sequences = self.decode_to_task_sequence(chromosome)
+
+        # Track end times
+        job_ends = [0] * self.instance.num_jobs   
+        machine_ends = [0] * self.instance.num_machines  
+        schedule = collections.defaultdict(list)  
+
         # Process tasks in chromosome order
-        for job_id, task_id in chromosome:
+        for job_id, task_id in task_sequences:
             # Get machine and duration for this task
             machine, duration = self.instance.tasks[job_id][task_id]
             
-            # Find earliest possible start time
-            start_time = self.find_earliest_start(
-                machine, job_id, task_id,
-                job_ends, schedule[machine], duration
-            )
+            # The earliest start time is the maximum of:
+            # 1. When the previous task of this job finishes
+            # 2. When the machine becomes available
+            start_time = max(job_ends[job_id], machine_ends[machine])
             
+
             # Create task object
             task = Task(
                 start_time=start_time,
@@ -136,20 +89,18 @@ class GASolver():
                 duration=duration,
                 machine=machine
             )
-            
+
+            # Update schedule and end times
             schedule[machine].append(task)
-            job_task_tracker[job_id] += 1
             job_ends[job_id] = start_time + duration
-            
-        # Validate the schedule
-        if not self.validate_schedule(schedule):
-            return None, float('inf')
-            
+            machine_ends[machine] = start_time + duration
+
         makespan = max(job_ends)
         return schedule, makespan
+
+    def validate_schedule(self, schedule): 
+        '''Validate that the schedule respects all constraints'''
         
-    def validate_schedule(self, schedule):
-        """Validate that the schedule respects all constraints"""
         # Check for machine conflicts
         for machine, tasks in schedule.items():
             sorted_tasks = sorted(tasks, key=lambda x: x.start_time)
@@ -174,92 +125,61 @@ class GASolver():
                     return False
                     
         return True
-        
-    def repair_chromosome(self, chromosome):
-        """Repair invalid chromosomes to make them valid"""
-        # Check if all job tasks are present and in the right order
+
+    def repair_chromosome(self, chromosome): 
+        '''Repair invalid chromosome to make it valid'''
+        # Count occurrences of each job_id
         job_positions = collections.defaultdict(list)
-        
+
         # Build a valid chromosome template
         valid_chromosome = []
-        
+
         # Create a list of all tasks that need to be scheduled
         all_tasks = []
         for job_id in range(self.instance.num_jobs):
             for task_id in range(self.lengths_jobs[job_id]):
                 all_tasks.append((job_id, task_id))
-        
-        # Try to preserve valid parts of the chromosome
-        used_tasks = set()
-        for job_id, task_id in chromosome:
-            # Skip if this task is already used or is invalid
-            if (job_id, task_id) in used_tasks or job_id >= self.instance.num_jobs or task_id >= self.lengths_jobs[job_id]:
-                continue
-                
-            # Check if previous tasks from the same job are already included
-            valid_to_include = True
-            for prev_task_id in range(task_id):
-                if (job_id, prev_task_id) not in used_tasks and (job_id, prev_task_id) not in valid_chromosome:
-                    valid_to_include = False
-                    break
-                    
-            if valid_to_include:
-                valid_chromosome.append((job_id, task_id))
-                used_tasks.add((job_id, task_id))
-        
-        # Add missing tasks in the correct order
-        remaining_tasks = [task for task in all_tasks if task not in used_tasks]
-        remaining_tasks.sort()  # Sort by job_id, then task_id to preserve precedence
-        
-        valid_chromosome.extend(remaining_tasks)
-        
-        # Double-check validity (debug)
-        if not self.is_valid_chromosome(valid_chromosome):
-            # Fall back to generating a new valid chromosome
-            return self.generator(self.prng, None)
-            
-        return valid_chromosome
-    
 
-    def generator(self, random, args):
-        if self.hybrid:
+        # Add existing jobs as long as they don't exceed their count
+        job_added = [0] * self.instance.num_jobs # Number of tasks added for each job
+        for job_id in chromosome:
+            if job_added[job_id] < self.lengths_jobs[job_id] and job_id < self.instance.num_jobs: # check if job_id is valid
+                valid_chromosome.append(job_id)
+                job_added[job_id] += 1
+        
+        # Add missing jobs
+        for job_id in range(self.instance.num_jobs):
+            remaining = self.lengths_jobs[job_id] - job_added[job_id]
+            valid_chromosome.extend([job_id] * remaining)
+        
+        # Length should match original chromosome
+        assert len(valid_chromosome) == len(chromosome)
+        
+        # Check if the repaired chromosome is valid
+        assert self.is_valid_chromosome(valid_chromosome)
+        
+        return valid_chromosome
+
+    def generator_chromosome(self, random, args): 
+        '''Generate a valid chromosome (list of job_id)'''
+        chromosome = []
+        for job_id, length in enumerate(self.lengths_jobs):
+            # Add each job's tasks in order
+            chromosome.extend([job_id] * length)
+        
+        # Shuffle the chromosome
+        random.shuffle(chromosome)
+        return chromosome            
+
+    def generator(self, random, args): 
+        # Chromosome if flag of hybrid is True
+        if self.hybrid and args['initial_population'] is not None:
+            # Use CP-SAT output as initial population
             return args['initial_population'].pop()
         else:
-            '''Generate valid chromosome with (job_id, task_id) tuples'''
-            # Start with ordered tasks for each job
-            all_tasks = []
-            for job_id in range(self.instance.num_jobs):
-                for task_id in range(self.lengths_jobs[job_id]):
-                    all_tasks.append((job_id, task_id))
-                    
-            # Shuffle maintaining precedence constraints
-            chromosome = []
-            available_tasks = []
-            
-            # Initialize available tasks with first task of each job
-            for job_id in range(self.instance.num_jobs):
-                available_tasks.append((job_id, 0))
-                
-            # Build chromosome by selecting random available tasks
-            job_progress = [0] * self.instance.num_jobs
-            
-            while available_tasks:
-                # Select random available task
-                idx = random.randint(0, len(available_tasks) - 1)
-                job_id, task_id = available_tasks.pop(idx)
-                
-                # Add to chromosome
-                chromosome.append((job_id, task_id))
-                
-                # Update job progress
-                job_progress[job_id] += 1
-                
-                # Add next task from this job if available
-                if job_progress[job_id] < self.lengths_jobs[job_id]:
-                    available_tasks.append((job_id, job_progress[job_id]))
-                    
-            return chromosome
-        
+            # Generate random chromosome
+            return self.generator_chromosome(random, args)
+
     def evaluator(self, candidates, args):
         '''Evaluate chromosome'''
         fitness = []
@@ -267,161 +187,209 @@ class GASolver():
             # Repair invalid chromosomes
             if not self.is_valid_chromosome(chromosome):
                 chromosome = self.repair_chromosome(chromosome)
-                
+
             _, makespan = self.decoder(chromosome, args)
             fitness.append(makespan)
-            
+
         return fitness
-        
+
     def observer(self, population, num_generations, num_evaluations, args):
         '''Observer function to track best solution'''
         best = min(population, key=lambda l: l.fitness)
         schedule, makespan = self.decoder(best.candidate, args)
-        
+        # print(f"Generation {num_generations}: makespan = {makespan}")
+
         if makespan < self.best_makespan:
             self.best_makespan = makespan
             self.best_schedule = schedule
-            
+
         if num_generations % 100 == 0:
-            print(f"Generation {num_generations}: Best makespan = {self.best_makespan}")
-    
+            print(
+                f"Generation {num_generations}: Best makespan = {self.best_makespan}")
+
     def solve(self, args):
         '''Solve JSP instance using GA'''
         ga = ec.GA(random=self.prng)
         ga.observer = self.observer
         ga.terminator = self.time_and_generation_terminator
-        ga.replacer = ec.replacers.truncation_replacement
+        ga.replacer = ec.replacers.generational_replacement 
         ga.variator = [self.custom_crossover, self.custom_mutation]
         ga.selector = ec.selectors.tournament_selection
-        
+
         # Use initial population if provided
         initial_population = None
         if args is not None and 'initial_population' in args:
             print("Using initial population from args")
             initial_population = args['initial_population']
-        
+
         # Run GA solver
         final_pop = ga.evolve(
             generator=self.generator,
             evaluator=self.evaluator,
-            pop_size=50,
+            pop_size=300,
             maximize=False,
             bounder=None,  # Custom bounds handling in generator
-            max_generations=1000,
-            mutation_rate=0.1,
-            crossover_rate=0.9,
-            num_selected=50,
+            max_generations=10000,
+            mutation_rate=0.9,
+            crossover_rate=0.7,
+            num_selected=70,
             initial_population=initial_population,
-            max_time = self.max_time,
-            start_time = time.time()
+            max_time=self.max_time,
+            start_time=time.time(),
+            num_elites = 10,
+            tournament_size=5
         )
-        
+
         return self.best_schedule, self.best_makespan
     
     def custom_crossover(self, random, candidates, args):
-        """Custom crossover operator: Order Crossover (OX)""" 
-        # Select a point in the job sequence and copy the jobs between two parents
+        """Job-preserving crossover operator for job ID sequences"""
         children = []
-        # the candidates are the chromosomes to be crossed (chromosomes are the schedules)
+        
         for i in range(0, len(candidates) - 1, 2):
             # Select parents
-            mom = candidates[i]
-            dad = candidates[i + 1]
+            parent1 = candidates[i]
+            parent2 = candidates[i + 1]
             
-            # Perform crossover
-            crossover_point = random.randint(0, len(mom) - 1) # select crossover point
-            child1 = mom[:crossover_point] + dad[crossover_point:]
-            child2 = dad[:crossover_point] + mom[crossover_point:]
+            # Create child chromosomes
+            child1 = [None] * len(parent1)
+            child2 = [None] * len(parent2)
             
-            # Repair children if they're invalid
-            child1 = self.repair_chromosome(child1)
-            child2 = self.repair_chromosome(child2)
+            # Select a random crossover point
+            crossover_point = random.randint(1, len(parent1) - 2)
             
-            # Add children to the list
-            children.extend([child1, child2])
+            # Copy segments from parents
+            child1[:crossover_point] = parent1[:crossover_point]
+            child2[:crossover_point] = parent2[:crossover_point]
             
-        # Add the last candidate if the population size is odd
+            # Count jobs already added to each child
+            child1_job_counts = collections.Counter(child1[:crossover_point])
+            child2_job_counts = collections.Counter(child2[:crossover_point])
+            
+            # Fill in the remaining positions while respecting job counts
+            # Fill child1 from parent2
+            idx1 = crossover_point
+            for job_id in parent2:
+                # Check if we can still add this job (haven't reached its limit)
+                if child1_job_counts.get(job_id, 0) < self.lengths_jobs[job_id]:
+                    child1[idx1] = job_id
+                    child1_job_counts[job_id] += 1
+                    idx1 += 1
+                if idx1 >= len(child1):
+                    break
+                    
+            # Fill child2 from parent1
+            idx2 = crossover_point
+            for job_id in parent1:
+                # Check if we can still add this job (haven't reached its limit)
+                if child2_job_counts.get(job_id, 0) < self.lengths_jobs[job_id]:
+                    child2[idx2] = job_id
+                    child2_job_counts[job_id] += 1
+                    idx2 += 1
+                if idx2 >= len(child2):
+                    break
+            
+            # Ensure chromosomes are valid (repair if needed)
+            if not self.is_valid_chromosome(child1):
+                child1 = self.repair_chromosome(child1)
+            if not self.is_valid_chromosome(child2):
+                child2 = self.repair_chromosome(child2)
+                
+            children.append(child1)
+            children.append(child2)
+        
+        # Add the last candidate if there's an odd number
         if len(candidates) % 2 == 1:
             children.append(candidates[-1])
             
         return children
-        
+
     def custom_mutation(self, random, candidates, args):
-        """Custom mutation operator: Swap Mutation"""
-        # Swap two random tasks in the chromosome
+        '''Custom mutation operator: Swap Mutation'''
         mutants = []
-        for candidate in candidates:
-            mutant = candidate[:]
-            if random.random() < args["mutation_rate"]:
-                idx1, idx2 = random.sample(range(len(mutant)), 2) # select two random indices
-                mutant[idx1], mutant[idx2] = mutant[idx2], mutant[idx1] # swap jobs
-                
-                # Repair if invalid
-                if not self.is_valid_chromosome(mutant):
-                    mutant = self.repair_chromosome(mutant)
-                    
-            mutants.append(mutant) # add mutant to the list
-            
+        for chromosome in candidates:
+            mutant = chromosome.copy()
+
+            if random.random() < args['mutation_rate']:
+                # Make a random number of mutation swaps (1 to 5)
+                num_swaps = random.randint(1, 5)
+                for _ in range(num_swaps):
+                    # Choose two random positions to swap
+                    pos1, pos2 = random.sample(range(len(mutant)), 2)
+                    mutant[pos1], mutant[pos2] = mutant[pos2], mutant[pos1]
+
+                    # Undo the swap if invalid 
+                    if not self.is_valid_chromosome(mutant):
+                        mutant[pos1], mutant[pos2] = mutant[pos2], mutant[pos1]
+                        
+            mutants.append(mutant)
+
         return mutants
-    
+
     # Custom terminator that combines generation limit and time limit
     def time_and_generation_terminator(self, population, num_generations, num_evaluations, args):
-        """Terminate when either max generations or time limit is reached"""
+        '''Terminate when either max generations or time limit is reached'''
         time_elapsed = time.time() - args['start_time']
         if time_elapsed >= args['max_time']:
             return True
-        
+
         # Check for generation termination
         return num_generations >= args.get('max_generations', 0)
-    
+
 # ----------------- Main -----------------
+
 
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Job Shop Problem Solver using CP-SAT')
-    parser.add_argument('instance_file', type=str, help='Path to the instance file')
-    parser.add_argument('--max_time', type=int, default=60, 
+    parser = argparse.ArgumentParser(
+        description='Job Shop Problem Solver using CP-SAT')
+    parser.add_argument('--instance_file', type=str,
+                        help='Path to the instance file')
+    parser.add_argument('--max_time', type=int, default=60,
                         help='Time limit in seconds (default: 60)')
-    parser.add_argument('--output', type=str, default='scheduleICP',
+    parser.add_argument('--output', type=str, default='scheduleGA',
                         help='Base name for output files (default: scheduleGA)')
-    
+
     args = parser.parse_args()
-    
+
     # Load and validate instance
     print(f"Loading instance from {args.instance_file}...")
     instance = load_instance(args.instance_file)
-    print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
-    
+    print(
+        f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
+
     # Initialize and run solver
     solver = GASolver(instance, seed=10, hybrid=False)
-    
+    solver.max_time = args.max_time
+
     start_time = time.time()    # track time
     tracemalloc.start()         # track memory
-    
-    snapshot1 = tracemalloc.take_snapshot() # memory snapshot
-    
-    schedule, makespan = solver.solve(None) # GA solver
-    
-    snapshot2 = tracemalloc.take_snapshot() # memory snapshot
-    end_time = time.time() # end time
-    
-    ga_time = end_time - start_time # time taken
+
+    snapshot1 = tracemalloc.take_snapshot()  # memory snapshot
+
+    schedule, makespan = solver.solve(None)  # GA solver
+
+    snapshot2 = tracemalloc.take_snapshot()  # memory snapshot
+    end_time = time.time()  # end time
+
+    ga_time = end_time - start_time  # time taken
     ga_stats = snapshot2.compare_to(snapshot1, 'lineno')
-    ga_memory = sum(stat.size_diff for stat in ga_stats) # memory usage
-    
+    ga_memory = sum(stat.size_diff for stat in ga_stats)  # memory usage
+
     print(f"\nMakespan: {makespan}")
     print(f"    - time: {ga_time:.2f} seconds")
     print(f"    - memory: {ga_memory / 1024 / 1024:.2f} MB")
-    
+
     # Validate final schedule
     is_valid = solver.validate_schedule(schedule)
     print(f"Schedule is valid: {is_valid}")
-    
+
     # Log schedule to file
     # log_schedule(schedule, makespan, f'{args.output}.txt')
-    
+
     # Visualize and save schedule
-    # visualize_schedule(schedule, makespan, instance, f'{args.output}.png')
+    visualize_schedule(schedule, makespan, instance, f'output/{args.output}.png')
+
 
 if __name__ == '__main__':
     main()
