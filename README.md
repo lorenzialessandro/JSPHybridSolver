@@ -18,7 +18,7 @@ Additional optional arguments
 - `--limit 0` : Set number of solution to use in case of CP-SAT with limiter
 - `--output filename` : Base name for output files (default: scheduleHybrid)
 
-If the solution limit is provided, it use ICP solver with solution limit. Otherwise it use ICP solver with time limit
+**Note**: If the solution limit is provided, it use ICP solver with solution limit. Otherwise it use ICP solver with time limit
 
 ---
 
