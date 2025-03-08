@@ -1,8 +1,6 @@
 import collections
 import numpy as np
 from typing import List, Dict, Tuple 
-import time             # Time tracking
-import tracemalloc      # Memory tracking
 import argparse
 import random
 
@@ -20,7 +18,7 @@ This way, the GA solver can start from a good solution and improve it further.
 '''
 
 class HybridSolver:
-    def __init__(self, instance, use_limiter = False, time_budget = 2000, limit=1):
+    def __init__(self, instance, seed = 10, use_limiter = False, time_budget = 2000, limit=1):
         self.instance = instance
         
         if use_limiter:
@@ -28,11 +26,11 @@ class HybridSolver:
         else:
             self.cp_solver = ICPSolver(instance)   # CP-SAT solver with time limit
             self.cp_solver.solver.parameters.max_time_in_seconds = time_budget * 0.3 # 30% of time budget
-        
-        self.cp_solver.solver.parameters.random_seed = 10
+        self.cp_solver.solver.parameters.random_seed = seed
 
-        self.ga_solver = GASolver(instance, seed=123, hybrid=True)     # GA solver
-        self.ga_solver.max_time = time_budget # 70% of time budget
+        ga_time_budget = time_budget if use_limiter else time_budget * 0.7
+        self.ga_solver = GASolver(instance, seed=seed, hybrid=True)     # GA solver
+        self.ga_solver.max_time = ga_time_budget # 70% of time budget
         
     def create_initial_population(self, base_chromosome, pop_size=50, 
                                   num_copies=1,  num_random=1):
@@ -82,43 +80,28 @@ class HybridSolver:
     def solve(self):
         '''Solve JSP instance using a hybrid approach'''
         
-        tracemalloc.start() # Start memory tracking
-        
         # ----------------- Step 1 : CP-SAT solver -----------------
-        print(f"\nSolving using CP-SAT solver...")
-        cp_start_time = time.time() # Start time
-        snapshot1 = tracemalloc.take_snapshot() # Memory snapshot
+        # print(f"\nSolving using CP-SAT solver...")
         
         # Solve using CP-SAT solver
-        schedule_icp, makespan_icp, solver_icp, status_icp = self.cp_solver.solve() # || CP-SAT SOLVER ||
+        schedule_icp, makespan_icp, solver_icp, status_icp, time_icp, memory_icp = self.cp_solver.solve() # || CP-SAT SOLVER ||
+
+        # print(f"CP-SAT solver found a solution with makespan {makespan_icp} in {time_icp:.2f} seconds")
+        # print(f"Memory usage: {memory_icp / 1024 / 1024:.2f} MB")
         
-        snapshot2 = tracemalloc.take_snapshot() # Memory snapshot
-        cp_end_time = time.time() # End time
-        
-        cp_time = cp_end_time - cp_start_time # Time taken  
-        cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
-        cp_memory = sum(stat.size_diff for stat in cp_stats) # Memory usage
-        
-        print(f"CP-SAT solver found a solution with makespan {makespan_icp} in {cp_time:.2f} seconds")
-        print(f"Memory usage: {cp_memory / 1024 / 1024:.2f} MB")
-        
+        #TODO: check if the solution found by CP-SAT is optimal
         if status_icp == cp_model.OPTIMAL:
-            print("\nOptimal solution found by CP-SAT solver!")
+            # print("\nOptimal solution found by CP-SAT solver!")
             # print("\n Exiting...")
-            # return None, 0, makespan_icp, cp_time, cp_memory
+            return schedule_icp, 0, makespan_icp, time_icp, memory_icp
         
         if status_icp == cp_model.UNKNOWN:
-            print("\nCP-SAT solver could not find a solution. Exiting...")
-            return None, 0, 0, 0, 0
-        
-        # visualize and save schedule
-        visualize_schedule(schedule_icp, makespan_icp, self.instance, f'output/schedule_icp.png')
-        
+            # print("\nCP-SAT solver could not find a solution. Exiting...")
+            return None, 0, 0, 0, 0, 
+
         # ----------------- Step 2 : GA solver -----------------
         # Use the solution found by CP-SAT solver as initial population for GA solver
-        print(f"\nSolving using GA solver...")
-        
-        # Convert schedule to (job_id, task_id) tuple chromosome format
+        # print(f"\nSolving using GA solver...")
         
         # First, collect all tasks from the schedule
         all_tasks = []
@@ -131,36 +114,21 @@ class HybridSolver:
         # Create chromosome as list of job_id representing the execution sequence
         base_chromosome = [task.job_id for task in all_tasks]    
         
-        # Verify that the base chromosome is valid
-        if not self.ga_solver.is_valid_chromosome(base_chromosome):
-            print("Warning: Base chromosome from CP-SAT solution is not valid. Repairing...")
-            base_chromosome = self.ga_solver.repair_chromosome(base_chromosome)
-        
         # Create initial population for GA solver
-        # note if you want to clone all the chromosomes in the initial population, you can use set num_copies = pop_size
-        initial_population = self.create_initial_population(base_chromosome, pop_size=300, num_copies=1, num_random=30)
+        initial_population = self.create_initial_population(base_chromosome, pop_size=100, num_copies=1, num_random=30)
         args = {'initial_population': initial_population}
-
-        ga_start_time = time.time() # Start time
-        snapshot3 = tracemalloc.take_snapshot() # Memory snapshot
         
         # Solve using GA solver
-        schedule_ga, makespan_ga = self.ga_solver.solve(args) # || GA SOLVER ||
+        schedule_ga, makespan_ga, time_ga, memory_ga = self.ga_solver.solve(args) # || GA SOLVER ||
+
         
-        snapshot4 = tracemalloc.take_snapshot() # Memory snapshot
-        ga_end_time = time.time() # End time
-        
-        ga_time = ga_end_time - ga_start_time # Time taken
-        ga_stats = snapshot4.compare_to(snapshot3, 'lineno')
-        ga_memory = sum(stat.size_diff for stat in ga_stats) # Memory usage
-        
-        print(f"GA solver found a solution with makespan {makespan_ga} in {ga_time:.2f} seconds")
-        print(f"Memory usage: {ga_memory / 1024 / 1024:.2f} MB")
+        # print(f"GA solver found a solution with makespan {makespan_ga} in {time_ga:.2f} seconds")
+        # print(f"Memory usage: {memory_ga / 1024 / 1024:.2f} MB")
         
         # ----------------- Results ----------------
         
-        total_time = cp_time + ga_time
-        total_memory = (cp_memory + ga_memory) / 1024 / 1024
+        total_time = time_icp + time_ga
+        total_memory = memory_icp + memory_ga
         
         return schedule_ga, makespan_ga, makespan_icp, total_time, total_memory
     
@@ -172,10 +140,12 @@ def main():
     parser.add_argument('--instance_file', type=str, help='Path to the instance file', default='../instances/ClassicBenchmark/jobshop_abz5')
     parser.add_argument('--time_limit', type=int, help='Time limit in seconds (default: 60)', default=60)
     parser.add_argument('--limit', type=int, help='Solution limit for CP-SAT solver', default=0)
+    parser.add_argument('--seed', type=int, help='Random seed', default=10)
     parser.add_argument('--output', type=str, default='scheduleHybrid',
                         help='Base name for output files (default: scheduleHybrid)')
     
     args = parser.parse_args()
+    random.seed(args.seed)
     
     # if the solution limit is provided, use ICP solver with solution limit
     # otherwise, use ICP solver with time limit
@@ -187,7 +157,7 @@ def main():
     print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
     
     # Initialize and run solver
-    solver = HybridSolver(instance, use_limiter = use_limiter, time_budget=args.time_limit, limit=args.limit)
+    solver = HybridSolver(instance, seed = args.seed, use_limiter = use_limiter, time_budget=args.time_limit, limit=args.limit)
     schedule, makespan_ga, makespan_icp, tot_time, tot_memory = solver.solve()
     
     print(f"----------------------------------")
@@ -199,7 +169,7 @@ def main():
         print(f"Improvement: {improvement:.2f}%")
     
     print(f"Total time: {tot_time:.2f} seconds")
-    print(f"Total memory: {tot_memory:.2f} MB")
+    print(f"Total memory: {(tot_memory / 1024 / 1024) :.2f} MB")
     
     # Log schedule to file
     # log_schedule(schedule, makespan_ga, f'output/{args.output}.txt')
