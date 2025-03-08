@@ -17,7 +17,7 @@ class Limiter(cp_model.CpSolverSolutionCallback):
     def on_solution_callback(self) -> None:
         self.__solution_count += 1
         if self.__solution_count >= self.__solution_limit:
-            print(f"Limit of {self.__solution_limit} solutions reached. Stopping search.")
+            # print(f"Limit of {self.__solution_limit} solutions reached. Stopping search.")
             self.stop_search()
 
 class ICPSolverLimiter:
@@ -29,6 +29,12 @@ class ICPSolverLimiter:
         
     def solve(self):
         '''Solve JSP instance using OR-Tools (CP-SAT)'''
+        
+        # Track time and memory usage
+        start_time_t = time.time()
+        tracemalloc.start()
+        snapshot1 = tracemalloc.take_snapshot()
+        
         # Calculate reasonable horizon
         horizon = sum(sum(task[1] for task in job) for job in self.instance.tasks)
         
@@ -77,16 +83,16 @@ class ICPSolverLimiter:
         self.model.Minimize(makespan)
         
         # Solve
-        print("Solving JSP instance using OR-Tools (CP-SAT)...")
+        # print("Solving JSP instance using OR-Tools (CP-SAT)...")
         solver = cp_model.CpSolver()
         limiter = Limiter(self.limit) # Set solution limit
         status = solver.Solve(self.model, limiter)
         
-        print(f"Status: {solver.StatusName(status)}")
+        # print(f"Status: {solver.StatusName(status)}")
         
         # Check if solution found
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            print(f"No solution found. Status: {solver.StatusName(status)}")
+            # print(f"No solution found. Status: {solver.StatusName(status)}")
             return None, None, solver, status
             
         # Extract Solution
@@ -106,7 +112,15 @@ class ICPSolverLimiter:
         for machine in schedule:
             schedule[machine].sort(key=lambda x: x.start_time)
             
-        return schedule, makespan_value, solver, status
+        # Track time and memory usage
+        end_time_t = time.time()
+        snapshot2 = tracemalloc.take_snapshot()
+        
+        cp_time = end_time_t - start_time_t
+        cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
+        cp_memory = sum(stat.size_diff for stat in cp_stats)
+            
+        return schedule, makespan_value, solver, status, cp_time, cp_memory
 
 def main():
     # Parse command line arguments
@@ -127,19 +141,9 @@ def main():
     # Initialize and run solver
     solver = ICPSolverLimiter(instance)
     solver.solver.parameters.random_seed = 10 # for reproducibility
-    tracemalloc.start() # Start memory tracking
     
-    start_time = time.time()
-    snapshot1 = tracemalloc.take_snapshot()
-    
-    schedule, makespan, solver, status = solver.solve()
-    
-    snapshot2 = tracemalloc.take_snapshot()
-    end_time = time.time()
-    
-    cp_time = end_time - start_time
-    cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
-    cp_memory = sum(stat.size_diff for stat in cp_stats)
+    schedule, makespan, solver, status, cp_time, cp_memory = solver.solve()
+
     
     if status == cp_model.OPTIMAL:
         print("\nOptimal solution found!")

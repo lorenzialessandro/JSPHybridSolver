@@ -3,9 +3,9 @@ import numpy as np
 import random
 from typing import List, Dict, Tuple
 from inspyred import ec
-import time             # Time tracking
-import tracemalloc      # Memory tracking
 import argparse
+import time
+import tracemalloc
 
 from utils import *
 
@@ -30,8 +30,11 @@ class GASolver():
         self.best_makespan = float('inf')
 
         self.max_time = 60  # default time limit for GA solver
+        
+        self.history = []           # track makespan over generations
+        self.history_best = []      # track best makespan over generations
 
-    def is_valid_chromosome(self, chromosome): #OK
+    def is_valid_chromosome(self, chromosome):
         '''Validate if a chromosome represents a valid job_id sequence'''
         # A chromosome is now a list of job_id
         
@@ -204,44 +207,148 @@ class GASolver():
             self.best_schedule = schedule
 
         if num_generations % 100 == 0:
-            print(
-                f"Generation {num_generations}: Best makespan = {self.best_makespan}")
+            self.history_best.append(self.best_makespan) # track best makespan over generations on 100th generation
+            # print(
+                # f"Generation {num_generations}: Best makespan = {self.best_makespan}")
+            
+        self.history.append(makespan)
+        
 
     def solve(self, args):
         '''Solve JSP instance using GA'''
+        
+        # Track time and memory usage
+        start_time_t = time.time()
+        tracemalloc.start()
+        snapshot1 = tracemalloc.take_snapshot()
+        
         ga = ec.GA(random=self.prng)
         ga.observer = self.observer
-        ga.terminator = self.time_and_generation_terminator
+        # ga.terminator = self.time_and_generation_terminator
+        # ga.terminator = ec.terminators.time_termination
+        ga.terminator = self.time_and_patient_terminator
         ga.replacer = ec.replacers.generational_replacement 
-        ga.variator = [self.custom_crossover, self.custom_mutation]
+        ga.variator = [self.multi_custom_crossover, self.custom_mutation]
         ga.selector = ec.selectors.tournament_selection
 
         # Use initial population if provided
         initial_population = None
         if args is not None and 'initial_population' in args:
-            print("Using initial population from args")
+            # print("Using initial population from args")
             initial_population = args['initial_population']
 
         # Run GA solver
         final_pop = ga.evolve(
             generator=self.generator,
             evaluator=self.evaluator,
-            pop_size=300,
+            pop_size=100,
             maximize=False,
             bounder=None,  # Custom bounds handling in generator
-            max_generations=10000,
-            mutation_rate=0.9,
-            crossover_rate=0.7,
+            max_generations=1000,
+            mutation_rate=0.7,
+            crossover_rate=0.6,
             num_selected=70,
             initial_population=initial_population,
             max_time=self.max_time,
             start_time=time.time(),
             num_elites = 10,
-            tournament_size=5
+            tournament_size=5,
+            patience = 3
         )
+        
+        snapshot2 = tracemalloc.take_snapshot()
+        end_time_t = time.time()
+        
+        ga_time = end_time_t - start_time_t
+        ga_stats = snapshot2.compare_to(snapshot1, 'lineno')
+        ga_memory = sum(stat.size_diff for stat in ga_stats)
 
-        return self.best_schedule, self.best_makespan
-    
+        return self.best_schedule, self.best_makespan, ga_time, ga_memory
+
+    def multi_custom_crossover(self, random, candidates, args):
+        """Job-preserving multi-point crossover operator for job ID sequences"""
+        children = []
+        
+        # Get number of crossover points (can be configured in args)
+        num_crossover_points = args.get('num_crossover_points', 3)
+        
+        for i in range(0, len(candidates) - 1, 2):
+            # Select parents
+            parent1 = candidates[i]
+            parent2 = candidates[i + 1]
+            
+            # Create child chromosomes
+            child1 = [None] * len(parent1)
+            child2 = [None] * len(parent2)
+            
+            # Select multiple random crossover points and sort them
+            crossover_points = sorted([random.randint(1, len(parent1) - 2) for _ in range(num_crossover_points)])
+            
+            # Add the end point to simplify segment handling
+            crossover_points.append(len(parent1))
+            
+            # Copy segments from parents alternately
+            start = 0
+            parent_switch = False  # False: use parent1 for child1, True: use parent2 for child1
+            
+            for point in crossover_points:
+                if not parent_switch:
+                    # Use parent1 for child1, parent2 for child2
+                    child1[start:point] = parent1[start:point]
+                    child2[start:point] = parent2[start:point]
+                else:
+                    # Use parent2 for child1, parent1 for child2
+                    child1[start:point] = parent2[start:point]
+                    child2[start:point] = parent1[start:point]
+                
+                # Switch for next segment
+                parent_switch = not parent_switch
+                start = point
+            
+            # Count jobs already added to each child
+            child1_job_counts = collections.Counter(job for job in child1 if job is not None)
+            child2_job_counts = collections.Counter(job for job in child2 if job is not None)
+            
+            # Identify positions that still need to be filled
+            child1_empty_positions = [idx for idx, val in enumerate(child1) if val is None]
+            child2_empty_positions = [idx for idx, val in enumerate(child2) if val is None]
+            
+            # Fill in the remaining positions while respecting job counts
+            # Fill child1 from parent2
+            idx1 = 0
+            for job_id in parent2:
+                # Check if we can still add this job (haven't reached its limit)
+                if child1_job_counts.get(job_id, 0) < self.lengths_jobs[job_id] and idx1 < len(child1_empty_positions):
+                    position = child1_empty_positions[idx1]
+                    child1[position] = job_id
+                    child1_job_counts[job_id] += 1
+                    idx1 += 1
+                    
+            # Fill child2 from parent1
+            idx2 = 0
+            for job_id in parent1:
+                # Check if we can still add this job (haven't reached its limit)
+                if child2_job_counts.get(job_id, 0) < self.lengths_jobs[job_id] and idx2 < len(child2_empty_positions):
+                    position = child2_empty_positions[idx2]
+                    child2[position] = job_id
+                    child2_job_counts[job_id] += 1
+                    idx2 += 1
+            
+            # Ensure chromosomes are valid (repair if needed)
+            if not self.is_valid_chromosome(child1):
+                child1 = self.repair_chromosome(child1)
+            if not self.is_valid_chromosome(child2):
+                child2 = self.repair_chromosome(child2)
+                
+            children.append(child1)
+            children.append(child2)
+        
+        # Add the last candidate if there's an odd number
+        if len(candidates) % 2 == 1:
+            children.append(candidates[-1])
+            
+        return children
+
     def custom_crossover(self, random, candidates, args):
         """Job-preserving crossover operator for job ID sequences"""
         children = []
@@ -335,11 +442,25 @@ class GASolver():
 
         # Check for generation termination
         return num_generations >= args.get('max_generations', 0)
+    
+    # Custom terminator that combines time limit and patience
+    def time_and_patient_terminator(self, population, num_generations, num_evaluations, args):
+        '''Terminate when either max time is reached or no improvement for patience generations'''
+        time_elapsed = time.time() - args['start_time']
+        if time_elapsed >= args['max_time']:
+            return True
+        
+        # Check for patience termination
+        if len(self.history_best) >= args['patience']:
+            if all (i == self.history_best[-1] for i in self.history_best[-args['patience']:]):
+                return True  
+        return False
 
 # ----------------- Main -----------------
 
 
 def main():
+    
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description='Job Shop Problem Solver using CP-SAT')
@@ -349,6 +470,7 @@ def main():
                         help='Time limit in seconds (default: 60)')
     parser.add_argument('--output', type=str, default='scheduleGA',
                         help='Base name for output files (default: scheduleGA)')
+    parser.add_argument('--seed', type=int, help='Random seed', default=10)
 
     args = parser.parse_args()
 
@@ -358,23 +480,15 @@ def main():
     print(
         f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
 
+    # set seed for reproducibility
+    random.seed(args.seed)
+    
     # Initialize and run solver
-    solver = GASolver(instance, seed=10, hybrid=False)
+    solver = GASolver(instance, seed=args.seed, hybrid=False)
     solver.max_time = args.max_time
 
-    start_time = time.time()    # track time
-    tracemalloc.start()         # track memory
+    schedule, makespan, ga_time, ga_memory = solver.solve(None)  # GA solver
 
-    snapshot1 = tracemalloc.take_snapshot()  # memory snapshot
-
-    schedule, makespan = solver.solve(None)  # GA solver
-
-    snapshot2 = tracemalloc.take_snapshot()  # memory snapshot
-    end_time = time.time()  # end time
-
-    ga_time = end_time - start_time  # time taken
-    ga_stats = snapshot2.compare_to(snapshot1, 'lineno')
-    ga_memory = sum(stat.size_diff for stat in ga_stats)  # memory usage
 
     print(f"\nMakespan: {makespan}")
     print(f"    - time: {ga_time:.2f} seconds")
@@ -389,6 +503,14 @@ def main():
 
     # Visualize and save schedule
     visualize_schedule(schedule, makespan, instance, f'output/{args.output}.png')
+    
+    # Plot all makespan values over generations
+    import matplotlib.pyplot as plt
+    plt.plot(solver.history)
+    plt.xlabel("Generation")
+    plt.ylabel("Makespan")
+    plt.title("Makespan over Generations")
+    plt.savefig(f'output/{args.output}_makespan.png')
 
 
 if __name__ == '__main__':

@@ -17,6 +17,11 @@ class ICPSolver:
     def solve(self):
         '''Solve JSP instance using OR-Tools (CP-SAT)'''
         
+        # Track time and memory usage
+        start_time_t = time.time()
+        tracemalloc.start()
+        snapshot1 = tracemalloc.take_snapshot()
+        
         max_time_in_seconds = self.solver.parameters.max_time_in_seconds # Time limit
         
         # Calculate reasonable horizon
@@ -67,17 +72,17 @@ class ICPSolver:
         self.model.Minimize(makespan)
         
         # Solve
-        print("Solving JSP instance using OR-Tools (CP-SAT)...")
+        # print("Solving JSP instance using OR-Tools (CP-SAT)...")
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = max_time_in_seconds # Set Time Limit
         status = solver.Solve(self.model)
         
-        print(f"Status: {solver.StatusName(status)}")
+        # print(f"Status: {solver.StatusName(status)}")
         
         # Check if solution found
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             print(f"No solution found. Status: {solver.StatusName(status)}")
-            return None, None, solver, status
+            return None, None, solver, status, 0, 0
             
         # Extract Solution
         schedule = {}
@@ -95,8 +100,16 @@ class ICPSolver:
         # Sort tasks on each machine by start time
         for machine in schedule:
             schedule[machine].sort(key=lambda x: x.start_time)
+         
+        # Track time and memory usage
+        snapshot2 = tracemalloc.take_snapshot()
+        end_time_t = time.time()
+        
+        cp_time = end_time_t - start_time_t
+        cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
+        cp_memory = sum(stat.size_diff for stat in cp_stats)
             
-        return schedule, makespan_value, solver, status
+        return schedule, makespan_value, solver, status, cp_time, cp_memory
 
 def main():
     # Parse command line arguments
@@ -121,17 +134,7 @@ def main():
     solver.solver.parameters.random_seed = 10 # for reproducibility
     tracemalloc.start() # Start memory tracking
     
-    start_time = time.time()
-    snapshot1 = tracemalloc.take_snapshot()
-    
-    schedule, makespan, solver, status = solver.solve()
-    
-    snapshot2 = tracemalloc.take_snapshot()
-    end_time = time.time()
-    
-    cp_time = end_time - start_time
-    cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
-    cp_memory = sum(stat.size_diff for stat in cp_stats)
+    schedule, makespan, solver, status, cp_time, cp_memory = solver.solve()
     
     if status == cp_model.OPTIMAL:
         print("\nOptimal solution found!")
