@@ -1,3 +1,22 @@
+Lunch runner 
+```python
+cd code
+```
+
+```python
+python3 runner.py --folder ../instances/ClassicBenchmark --workers 4
+```
+
+Additional optional arguments  
+- `--folder` : Path to the folder containing the instances (default: `../instances/ClassicBenchmark`)  
+- `--instance` : Path to a specific instance file  
+- `--csvfile` : CSV file to log the results (default: `csv/resultsYYYYMMDD-HHMMSS.csv`)  
+- `--seed` : Random seed (default: `10`)  
+- `--workers` : Number of parallel workers (default: number of CPU cores)  
+
+
+---
+
 Run Hybrid approach solver (ICP+ GA)
 
 ```python
