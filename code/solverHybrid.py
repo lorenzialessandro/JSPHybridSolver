@@ -119,6 +119,7 @@ class HybridSolver:
         args = {'initial_population': initial_population}
         
         # Solve using GA solver
+        self.ga_solver.max_time = self.ga_solver.max_time - time_icp # Remaining time budget
         schedule_ga, makespan_ga, time_ga, memory_ga = self.ga_solver.solve(args) # || GA SOLVER ||
 
         
