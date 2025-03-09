@@ -45,7 +45,6 @@ def run_and_log_experiment(instance, csv_file, seed, first_run=False):
         logger.info(f"[{instance.name}] CP-SAT completed: makespan={cp_opt_make}, time={cp_opt_time:.2f}s")
 
         # 2. Run Hybrid solver with limiter
-        #TODO: check if the solution found by CP-SAT is optimal
         logger.info(f"[{instance.name}] Running Hybrid solver with limiter...")
         hy_lim_make, _, hy_lim_tot_time, hy_lim_tot_memory = run_hybrid_limiter(instance, seed, cp_opt_time, 1)
         diff_hy_lim_cp_opt = (hy_lim_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
