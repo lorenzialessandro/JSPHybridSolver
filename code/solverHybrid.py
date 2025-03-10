@@ -89,12 +89,13 @@ class HybridSolver:
         # print(f"CP-SAT solver found a solution with makespan {makespan_icp} in {time_icp:.2f} seconds")
         # print(f"Memory usage: {memory_icp / 1024 / 1024:.2f} MB")
         
-        #TODO: check if the solution found by CP-SAT is optimal
+        # If the solution found by CP-SAT solver is optimal, return it (no need to use GA solver)
         if status_icp == cp_model.OPTIMAL:
             # print("\nOptimal solution found by CP-SAT solver!")
             # print("\n Exiting...")
-            return schedule_icp, 0, makespan_icp, time_icp, memory_icp
+            return schedule_icp, makespan_icp, makespan_icp, time_icp, memory_icp
         
+        # If CP-SAT solver could not find a solution, return None
         if status_icp == cp_model.UNKNOWN:
             # print("\nCP-SAT solver could not find a solution. Exiting...")
             return None, 0, 0, 0, 0, 
@@ -121,7 +122,6 @@ class HybridSolver:
         # Solve using GA solver
         self.ga_solver.max_time = self.ga_solver.max_time - time_icp # Set remaining time budget for GA solver (TODO: add overhead for creating initial population)
         schedule_ga, makespan_ga, time_ga, memory_ga = self.ga_solver.solve(args) # || GA SOLVER ||
-
         
         # print(f"GA solver found a solution with makespan {makespan_ga} in {time_ga:.2f} seconds")
         # print(f"Memory usage: {memory_ga / 1024 / 1024:.2f} MB")
