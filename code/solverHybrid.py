@@ -117,9 +117,9 @@ class HybridSolver:
         # Create initial population for GA solver
         initial_population = self.create_initial_population(base_chromosome, pop_size=100, num_copies=1, num_random=30)
         args = {'initial_population': initial_population}
-        
+    
         # Solve using GA solver
-        self.ga_solver.max_time = self.ga_solver.max_time - time_icp # Remaining time budget
+        self.ga_solver.max_time = self.ga_solver.max_time - time_icp # Set remaining time budget for GA solver (TODO: add overhead for creating initial population)
         schedule_ga, makespan_ga, time_ga, memory_ga = self.ga_solver.solve(args) # || GA SOLVER ||
 
         
