@@ -49,13 +49,19 @@ def run_and_log_experiment(instance, csv_file, seed, first_run=False):
         hy_lim_make, _, hy_lim_tot_time, hy_lim_tot_memory = run_hybrid_limiter(instance, seed, cp_opt_time, 1)
         diff_hy_lim_cp_opt = (hy_lim_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
         logger.info(f"[{instance.name}] Hybrid limiter completed: makespan={hy_lim_make}, time={hy_lim_tot_time:.2f}s")
+        
+        # 3. Run Hybrid solver with collector
+        logger.info(f"[{instance.name}] Running Hybrid solver with collector...")
+        hy_col_make, _, hy_col_tot_time, hy_col_tot_memory = run_hybrid_collector(instance, seed, cp_opt_time)
+        diff_hy_col_cp_opt = (hy_col_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
+        logger.info(f"[{instance.name}] Hybrid collector completed: makespan={hy_col_make}, time={hy_col_tot_time:.2f}s")
 
-        # 3. Run GA only solver
+        # 4. Run GA only solver
         logger.info(f"[{instance.name}] Running GA solver...")
         ga_make, ga_time, ga_memory = run_ga(instance, seed, cp_opt_time)
         logger.info(f"[{instance.name}] GA completed: makespan={ga_make}, time={ga_time:.2f}s")
         
-        # 4. Run Hybrid solver
+        # 5. Run Hybrid solver
         logger.info(f"[{instance.name}] Running Hybrid solver...")
         hy_make, _, hy_tot_time, hy_tot_memory = run_hybrid(instance, seed, cp_opt_time)
         diff_hy_cp_opt = (hy_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
@@ -70,6 +76,7 @@ def run_and_log_experiment(instance, csv_file, seed, first_run=False):
                 writer.writerow([
                     instance.name, cp_opt_make, cp_opt_time, cp_opt_memory, cp_opt_status,
                     hy_lim_make, hy_lim_tot_time, hy_lim_tot_memory, diff_hy_lim_cp_opt,
+                    hy_col_make, hy_col_tot_time, hy_col_tot_memory, diff_hy_col_cp_opt,
                     ga_make, ga_time, ga_memory,
                     hy_make, hy_tot_time, hy_tot_memory, diff_hy_cp_opt
                 ])
@@ -84,7 +91,7 @@ def run_and_log_experiment(instance, csv_file, seed, first_run=False):
         with csv_lock:
             with open(csv_file, 'a', newline='') as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow([instance.name, "ERROR", str(e), "", "", "", "", "", "", "", "", "", "", "", "", ""])
+                writer.writerow([instance.name, "ERROR", str(e), "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
         
         return False
 
@@ -92,21 +99,31 @@ def run_and_log_experiment(instance, csv_file, seed, first_run=False):
 
 def run_hybrid_limiter(instance, seed, time_budget, limit):
     try:
-        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=True, time_budget=time_budget, limit=limit)
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=True, use_collector = False, time_budget=time_budget, limit=limit)
         schedule, makespan_ga, makespan_icp, tot_time, tot_memory = hybrid_solver.solve()
         return makespan_ga, makespan_icp, tot_time, tot_memory
     except Exception as e:
         logger.error(f"Error in hybrid limiter for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
+
+def run_hybrid_collector(instance, seed, time_budget):
+    try:
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector = True, time_budget=time_budget, limit=0)
+        schedule, makespan_ga, makespan_icp, tot_time, tot_memory = hybrid_solver.solve()
+        return makespan_ga, makespan_icp, tot_time, tot_memory
+    except Exception as e:
+        logger.error(f"Error in hybrid collector for {instance.name}: {str(e)}")
+        return float('inf'), float('inf'), 0, 0
         
 def run_hybrid(instance, seed, time_budget):
     try:
-        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, time_budget=time_budget, limit=0)
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector = False, time_budget=time_budget, limit=0)
         schedule, makespan_ga, makespan_icp, tot_time, tot_memory = hybrid_solver.solve()
         return makespan_ga, makespan_icp, tot_time, tot_memory
     except Exception as e:
         logger.error(f"Error in hybrid solver for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
+
         
 def run_ga(instance, seed, time_budget):
     try:
@@ -139,6 +156,7 @@ def create_csv_file(csv_path):
             writer.writerow([
                 'instance', 'cp_opt_make', 'cp_opt_time', 'cp_opt_memory', 'cp_opt_status',
                 'hy_lim_make', 'hy_lim_tot_time', 'hy_lim_tot_memory', 'diff_hy_lim_cp_opt',
+                'hy_col_make', 'hy_col_tot_time', 'hy_col_tot_memory', 'diff_hy_col_cp_opt',
                 'ga_make', 'ga_time', 'ga_memory',
                 'hy_make', 'hy_tot_time', 'hy_tot_memory', 'diff_hy_cp_opt'
             ])
