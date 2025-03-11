@@ -3,7 +3,6 @@ import numpy as np
 from typing import List, Dict, Tuple 
 from ortools.sat.python import cp_model
 import time             # Time tracking
-import tracemalloc      # Memory tracking
 import argparse
 
 from utils import *
@@ -35,10 +34,8 @@ class ICPSolverCollectorLimiter:
     def solve(self):
         '''Solve JSP instance using OR-Tools (CP-SAT)'''
         
-        # Track time and memory usage
+        # Track time 
         start_time_t = time.time()
-        tracemalloc.start()
-        snapshot1 = tracemalloc.take_snapshot()
         
         # Calculate reasonable horizon
         horizon = sum(sum(task[1] for task in job) for job in self.instance.tasks)
@@ -138,15 +135,10 @@ class ICPSolverCollectorLimiter:
         for machine in schedule:
             schedule[machine].sort(key=lambda x: x.start_time)
             
-        # Track time and memory usage
-        end_time_t = time.time()
-        snapshot2 = tracemalloc.take_snapshot()
         
         cp_time = end_time_t - start_time_t
-        cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
-        cp_memory = sum(stat.size_diff for stat in cp_stats)
             
-        return schedule, makespan_value, solver, status, cp_time, cp_memory, schedules
+        return schedule, makespan_value, solver, status, cp_time, 0, schedules
 
 def main():
     # Parse command line arguments

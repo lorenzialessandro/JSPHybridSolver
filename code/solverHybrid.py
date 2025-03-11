@@ -175,12 +175,7 @@ def main():
     
     # Initialize and run solver
     solver = HybridSolver(instance, seed = args.seed, use_limiter = use_limiter, use_collector = args.collector, time_budget=args.time_limit, limit=args.limit)
-    tracemalloc.start()
     schedule, makespan_ga, makespan_icp, tot_time, tot_memory = solver.solve()
-    current, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    
-    print(f"Peaks: {peak / 1024 / 1024} MB")
     
     print(f"----------------------------------")
     print(f"\nMakespan: {makespan_ga} in {tot_time:.2f} seconds")

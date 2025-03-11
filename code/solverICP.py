@@ -3,7 +3,6 @@ import numpy as np
 from typing import List, Dict, Tuple 
 from ortools.sat.python import cp_model
 import time             # Time tracking
-import tracemalloc      # Memory tracking
 import argparse
 
 from utils import *
@@ -17,10 +16,8 @@ class ICPSolver:
     def solve(self):
         '''Solve JSP instance using OR-Tools (CP-SAT)'''
         
-        # Track time and memory usage
+        # Track time
         start_time_t = time.time()
-        tracemalloc.start()
-        snapshot1 = tracemalloc.take_snapshot()
         
         max_time_in_seconds = self.solver.parameters.max_time_in_seconds # Time limit
         
@@ -101,15 +98,9 @@ class ICPSolver:
         for machine in schedule:
             schedule[machine].sort(key=lambda x: x.start_time)
          
-        # Track time and memory usage
-        snapshot2 = tracemalloc.take_snapshot()
-        end_time_t = time.time()
-        
         cp_time = end_time_t - start_time_t
-        cp_stats = snapshot2.compare_to(snapshot1, 'lineno')
-        cp_memory = sum(stat.size_diff for stat in cp_stats)
             
-        return schedule, makespan_value, solver, status, cp_time, cp_memory
+        return schedule, makespan_value, solver, status, cp_time, 0
 
 def main():
     # Parse command line arguments
@@ -132,7 +123,6 @@ def main():
     if args.time_limit != 0: # if time limit 0 then no time limit is set so it will run until optimal solution is found
         solver.solver.parameters.max_time_in_seconds = args.time_limit
     solver.solver.parameters.random_seed = 10 # for reproducibility
-    tracemalloc.start() # Start memory tracking
     
     schedule, makespan, solver, status, cp_time, cp_memory = solver.solve()
     
