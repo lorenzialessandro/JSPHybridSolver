@@ -97,7 +97,8 @@ class ICPSolver:
         # Sort tasks on each machine by start time
         for machine in schedule:
             schedule[machine].sort(key=lambda x: x.start_time)
-         
+        end_time_t = time.time()
+        
         cp_time = end_time_t - start_time_t
             
         return schedule, makespan_value, solver, status, cp_time, 0
