@@ -111,7 +111,7 @@ class HybridSolver:
             return schedule_icp, makespan_icp, makespan_icp, time_icp, memory_icp
         
         if status_icp == cp_model.UNKNOWN: # If CP-SAT solver could not find a solution, return None
-            return None, 0, 0, 0, 0
+            return None, None, None, None, None
             
         # Collect chromosome(s) from the solution(s) found by CP-SAT solver
         chromosomes = []
@@ -148,6 +148,9 @@ class HybridSolver:
         total_time = time_icp + time_ga
         total_memory = memory_icp + memory_ga
         
+        print(f"peak {peak / 1024 / 1024} MB")
+        print(f"total {total_memory / 1024 / 1024} MB")
+        
         return schedule_ga, makespan_ga, makespan_icp, total_time, total_memory
     
 
@@ -177,6 +180,7 @@ def main():
     # Initialize and run solver
     solver = HybridSolver(instance, seed = args.seed, use_limiter = use_limiter, use_collector = args.collector, time_budget=args.time_limit, limit=args.limit)
     schedule, makespan_ga, makespan_icp, tot_time, tot_memory = solver.solve()
+    
     
     print(f"----------------------------------")
     print(f"\nMakespan: {makespan_ga} in {tot_time:.2f} seconds")

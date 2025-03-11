@@ -88,18 +88,14 @@ class ICPSolverCollectorLimiter:
         self.model.Minimize(makespan)
         
         # Solve
-        # print("Solving JSP instance using OR-Tools (CP-SAT)...")
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = self.time_limit
         limiter = Limiter(starts.values())
         status = solver.Solve(self.model, limiter) 
-        
-        # print(f"Status: {solver.StatusName(status)}")
-        
+
         # Check if solution found
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            # print(f"No solution found. Status: {solver.StatusName(status)}")
-            return None, None, solver, status, 0, 0, 0, []
+            return None, None, None, None, None, None, None
         
         # Collect all the schedules
         schedules = []

@@ -1,0 +1,2 @@
+instance,run_id,seed,cp_opt_make,cp_opt_time,cp_opt_memory,cp_opt_status,hy_lim_make,hy_lim_tot_time,hy_lim_tot_memory,diff_hy_lim_cp_opt,hy_col_make,hy_col_tot_time,hy_col_tot_memory,diff_hy_col_cp_opt,ga_make,ga_time,ga_memory,hy_make,hy_tot_time,hy_tot_memory,diff_hy_cp_opt
+../instances/test3,0,10,ERROR,unsupported operand type(s) for -: 'NoneType' and 'float',,,,,,,,,,,,,,,,,

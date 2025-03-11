@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from typing import NamedTuple
+import tracemalloc
 
 class Task():
     """Represents a job task with timing and resource information"""
@@ -63,7 +64,16 @@ def load_instance(filename):
         
     return instance
 
-# ----------------- Visualize Schedule -----------------
+# Measure Time
+def measure_memory(func):
+    tracemalloc.start()
+    func() # Run the function
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    # return peak
+    return peak / 1024 / 1024 # Convert to MB
+
+# Visualize Schedule
      
 def visualize_schedule(schedule, makespan, instance, filename='schedule.png'):
     """Visualize the schedule using matplotlib"""
@@ -91,7 +101,7 @@ def visualize_schedule(schedule, makespan, instance, filename='schedule.png'):
     plt.savefig(filename)
     plt.close()        
 
-# ----------------- Log results -----------------
+# Log results
 def log_schedule(schedule, makespan, filename='schedule.txt'):
     with open(filename, 'w') as f:
         f.write(f"Best makespan: {makespan}\n")
@@ -101,13 +111,3 @@ def log_schedule(schedule, makespan, filename='schedule.txt'):
         f.write("\n")
         f.close()
 
-# Example usage
-def main():
-    instance = load_instance('../instances/abz5')
-    print(instance)
-    # print tasks
-    for job_id, tasks in enumerate(instance.tasks):
-        print(f"Job {job_id}: {tasks}")
-    
-if __name__ == '__main__':
-    main()

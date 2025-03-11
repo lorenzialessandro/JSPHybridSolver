@@ -82,7 +82,7 @@ class ICPSolver:
         # Check if solution found
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             print(f"No solution found. Status: {solver.StatusName(status)}")
-            return None, None, solver, status, 0, 0
+            return None, None, solver, status, None, None
             
         # Extract Solution
         schedule = {}

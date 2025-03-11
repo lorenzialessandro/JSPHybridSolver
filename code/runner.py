@@ -141,7 +141,9 @@ def run_cp_sat_find_optimal(instance, seed):
     try:
         cp_solver = ICPSolver(instance)
         cp_solver.solver.parameters.random_seed = seed
-        schedule, makespan, solver, status, cp_time, cp_memory = cp_solver.solve()
+        schedule, makespan, solver, status, cp_time, old_cp_memory = cp_solver.solve()
+        cp_memory = measure_memory(lambda: cp_solver.solve())
+
         return makespan, cp_time, cp_memory, status
     except Exception as e:
         logger.error(f"Error in CP-SAT solver for {instance.name}: {str(e)}")
