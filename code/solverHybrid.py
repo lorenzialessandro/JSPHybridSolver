@@ -110,7 +110,7 @@ class HybridSolver:
             return schedule_icp, makespan_icp, makespan_icp, time_icp, memory_icp
         
         if status_icp == cp_model.UNKNOWN: # If CP-SAT solver could not find a solution, return None
-            return None, None, None, None, None
+            return None, 0, 0, 0, 0
             
         # Collect chromosome(s) from the solution(s) found by CP-SAT solver
         chromosomes = []

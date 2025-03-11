@@ -135,6 +135,7 @@ class ICPSolverCollectorLimiter:
         for machine in schedule:
             schedule[machine].sort(key=lambda x: x.start_time)
             
+        end_time_t = time.time()
         
         cp_time = end_time_t - start_time_t
             
