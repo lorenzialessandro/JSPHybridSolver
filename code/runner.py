@@ -195,7 +195,7 @@ def main():
     parser.add_argument('--folder', type=str, help='Path to the folder containing the instances', default='../instances/ClassicBenchmark')
     parser.add_argument('--instance', type=str, help='Path to a specific instance file')
     parser.add_argument('--csv_file', type=str, default=f'csv/results_{datetime.now().strftime("%Y%m%d-%H%M%S")}.csv', help='CSV file to log the results')
-    parser.add_argument('--max_time_budget', type=int, help='Max time budget for each solver in seconds', default=2700)
+    parser.add_argument('--max_time_budget', type=int, help='Max time budget for each solver in seconds', default=7200)
     parser.add_argument('--seed', type=int, help='Base random seed', default=10)
     parser.add_argument('--num_runs', type=int, help='Number of runs per instance with different seeds', default=1)
     parser.add_argument('--workers', type=int, help='Number of parallel workers (default: number of CPU cores)', default=None)
