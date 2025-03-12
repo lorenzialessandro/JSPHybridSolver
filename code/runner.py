@@ -59,7 +59,7 @@ def memory_tracker():
     monitor_thread.start()
     
     try:
-        yield lambda: max(0, peak_memory[0] - initial_memory)  # Always return non-negative value
+        yield lambda: peak_memory[0] - initial_memory
     finally:
         stop_monitoring.set()
         monitor_thread.join(timeout=1.0)
