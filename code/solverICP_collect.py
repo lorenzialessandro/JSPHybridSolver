@@ -3,7 +3,6 @@ import numpy as np
 from typing import List, Dict, Tuple 
 from ortools.sat.python import cp_model
 import time             # Time tracking
-import argparse
 import psutil
 from utils import *
 
@@ -92,7 +91,7 @@ class ICPSolverCollectorLimiter:
 
         # Check if solution found
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            return None, None, None, None, None, None, None
+            return None, None, None, None, None, None
         
         # Collect all the schedules
         schedules = []
@@ -139,58 +138,4 @@ class ICPSolverCollectorLimiter:
         
         cp_time = end_time_t - start_time_t
             
-        return schedule, makespan_value, solver, status, cp_time, 0, schedules
-
-def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Job Shop Problem Solver using CP-SAT')
-    parser.add_argument('--instance_file', type=str, help='Path to the instance file')
-    parser.add_argument('--time_limit', type=int, default=60, 
-                        help='Time limit in seconds (default: 60)')
-    parser.add_argument('--output', type=str, default='scheduleICP',
-                        help='Base name for output files (default: scheduleICP)')
-    
-    args = parser.parse_args()
-    
-    # Load and validate instance
-    print(f"Loading instance from {args.instance_file}...")
-    instance = load_instance(args.instance_file)
-    print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
-    
-    # Initialize and run solver
-    solver = ICPSolverCollectorLimiter(instance, args.time_limit)
-    solver.solver.parameters.random_seed = 10 # for reproducibility
-    
-    schedule, makespan, solver, status, cp_time, cp_memory, schedules = solver.solve()
-    
-    
-    print(f"----------------------------------")
-
-    if status == cp_model.OPTIMAL:
-        print("\nOptimal solution found!")
-    elif status == cp_model.FEASIBLE:
-        print("\nFeasible solution found (may not be optimal)")
-    else:
-        print(f"\nNo solution found. Status: {solver.StatusName(status)}")
-        return
-        
-    print(f"Makespan: {makespan}")
-    print("\nSolver Statistics:")
-    print(f"  - conflicts : {solver.NumConflicts()}")
-    print(f"  - branches  : {solver.NumBranches()}")
-    print(f"  - wall time : {solver.WallTime():.2f} seconds")
-    print(f"  - time      : {cp_time:.2f} seconds")
-    print(f"  - memory    : {cp_memory / 1024 / 1024:.2f} MB")
-    print(f"----------------------------------")
-    print(f"  - solution count: {len(schedules)}")
-    print(f"----------------------------------")
-    print(f"  - schedules: {schedules}")
-    
-    # log schedule to file
-    # log_schedule(schedule, makespan, f'{args.output}.txt')
-    
-    # visualize and save schedule
-    # visualize_schedule(schedule, makespan, instance, f'{args.output}.png')
-    
-if __name__ == '__main__':
-    main()
+        return schedule, makespan_value, solver, status, cp_time, schedules

@@ -3,13 +3,13 @@ import numpy as np
 from typing import List, Dict, Tuple 
 from ortools.sat.python import cp_model
 import time             # Time tracking
-import argparse
 import psutil
 from utils import *
 
 class ICPSolver:
-    def __init__(self, instance):
+    def __init__(self, instance, time_limit):
         self.instance = instance
+        self.time_limit = time_limit
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
         
@@ -69,17 +69,14 @@ class ICPSolver:
         self.model.Minimize(makespan)
         
         # Solve
-        # print("Solving JSP instance using OR-Tools (CP-SAT)...")
         solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = max_time_in_seconds # Set Time Limit
+        solver.parameters.max_time_in_seconds = self.time_limit
         status = solver.Solve(self.model)
-        
-        # print(f"Status: {solver.StatusName(status)}")
         
         # Check if solution found
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             print(f"No solution found. Status: {solver.StatusName(status)}")
-            return None, None, solver, status, None, None
+            return None, None, solver, status, None
             
         # Extract Solution
         schedule = {}
@@ -101,53 +98,4 @@ class ICPSolver:
         
         cp_time = end_time_t - start_time_t
             
-        return schedule, makespan_value, solver, status, cp_time, 0
-
-def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Job Shop Problem Solver using CP-SAT')
-    parser.add_argument('--instance_file', type=str, help='Path to the instance file')
-    parser.add_argument('--time_limit', type=int, default=0, 
-                        help='Time limit in seconds (default: 0). 0 means no time limit')
-    parser.add_argument('--output', type=str, default='scheduleICP',
-                        help='Base name for output files (default: scheduleICP)')
-    
-    args = parser.parse_args()
-    
-    # Load and validate instance
-    print(f"Loading instance from {args.instance_file}...")
-    instance = load_instance(args.instance_file)
-    print(f"Instance loaded: {instance.num_jobs} jobs, {instance.num_machines} machines")
-    
-    # Initialize and run solver
-    solver = ICPSolver(instance)
-    if args.time_limit != 0: # if time limit 0 then no time limit is set so it will run until optimal solution is found
-        solver.solver.parameters.max_time_in_seconds = args.time_limit
-    solver.solver.parameters.random_seed = 10 # for reproducibility
-    
-    schedule, makespan, solver, status, cp_time, cp_memory = solver.solve()
-    
-    if status == cp_model.OPTIMAL:
-        print("\nOptimal solution found!")
-    elif status == cp_model.FEASIBLE:
-        print("\nFeasible solution found (may not be optimal)")
-    else:
-        print(f"\nNo solution found. Status: {solver.StatusName(status)}")
-        return
-        
-    print(f"Makespan: {makespan}")
-    print("\nSolver Statistics:")
-    print(f"  - conflicts : {solver.NumConflicts()}")
-    print(f"  - branches  : {solver.NumBranches()}")
-    print(f"  - wall time : {solver.WallTime():.2f} seconds")
-    print(f"  - time      : {cp_time:.2f} seconds")
-    print(f"  - memory    : {cp_memory / 1024 / 1024:.2f} MB")
-    
-    # log schedule to file
-    # log_schedule(schedule, makespan, f'{args.output}.txt')
-    
-    # visualize and save schedule
-    visualize_schedule(schedule, makespan, instance, f'output/{args.output}.png')
-    
-if __name__ == '__main__':
-    main()
+        return schedule, makespan_value, solver, status, cp_time

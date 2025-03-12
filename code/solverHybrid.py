@@ -19,20 +19,19 @@ This way, the GA solver can start from a good solution and improve it further.
 '''
 
 class HybridSolver:
-    def __init__(self, instance, seed = 10, use_limiter = False, use_collector = False, time_budget = 2000, limit=1):
+    def __init__(self, instance, seed, use_limiter = False, use_collector = False, time_budget = 2000, limit=1, max_time_budget=7200):
         self.instance = instance
         self.seed = seed
         self.use_limiter = use_limiter
         self.use_collector = use_collector
         
+        icp_time_budget = min(time_budget * 0.3, max_time_budget) # 30% of time budget for CP-SAT solver (max 2 hours)
         if self.use_limiter:
             self.cp_solver = ICPSolverLimiter(instance, limit)   # CP-SAT solver with solution limit
         elif self.use_collector:
-            self.cp_solver = ICPSolverCollectorLimiter(instance, time_budget * 0.3)  # CP-SAT solver with solution collection
-            self.cp_solver.solver.parameters.max_time_in_seconds = time_budget * 0.3 # 30% of time budget
+            self.cp_solver = ICPSolverCollectorLimiter(instance, icp_time_budget)  # CP-SAT solver with solution collection (30% of time budget)
         else:
-            self.cp_solver = ICPSolver(instance)   # CP-SAT solver with time limit
-            self.cp_solver.solver.parameters.max_time_in_seconds = time_budget * 0.3 # 30% of time budget
+            self.cp_solver = ICPSolver(instance, icp_time_budget)  # CP-SAT solver with time limit (30% of time budget)
         self.cp_solver.solver.parameters.random_seed = seed
 
         ga_time_budget = time_budget if use_limiter else time_budget * 0.7
@@ -101,16 +100,16 @@ class HybridSolver:
 
         if self.use_collector: 
             # Use solution collector for CP-SAT solver : collect all solutions found by CP-SAT solver and use to build initial population for GA solver
-            schedule_icp, makespan_icp, solver_icp, status_icp, time_icp, memory_icp, schedules = self.cp_solver.solve() # || CP-SAT SOLVER with collector ||
+            schedule_icp, makespan_icp, solver_icp, status_icp, time_icp, schedules = self.cp_solver.solve() # || CP-SAT SOLVER with collector ||
         else:
             # Use CP-SAT solver with time limit
-            schedule_icp, makespan_icp, solver_icp, status_icp, time_icp, memory_icp = self.cp_solver.solve() # || CP-SAT SOLVER ||
+            schedule_icp, makespan_icp, solver_icp, status_icp, time_icp = self.cp_solver.solve() # || CP-SAT SOLVER ||
             
         if status_icp == cp_model.OPTIMAL:  # If the solution found by CP-SAT solver is optimal, return it (no need to use GA solver)
-            return schedule_icp, makespan_icp, makespan_icp, time_icp, memory_icp
+            return schedule_icp, makespan_icp, makespan_icp, time_icp
         
         if status_icp == cp_model.UNKNOWN: # If CP-SAT solver could not find a solution, return None
-            return None, 0, 0, 0, 0
+            return None, 0, 0, 0
             
         # Collect chromosome(s) from the solution(s) found by CP-SAT solver
         chromosomes = []
@@ -141,13 +140,12 @@ class HybridSolver:
     
         # Solve using GA solver
         self.ga_solver.max_time = self.ga_solver.max_time - time_icp # Set remaining time budget for GA solver (TODO: add overhead for creating initial population)
-        schedule_ga, makespan_ga, time_ga, memory_ga = self.ga_solver.solve(args) # || GA SOLVER ||
+        schedule_ga, makespan_ga, time_ga = self.ga_solver.solve(args) # || GA SOLVER ||
         
         # Results
         total_time = time_icp + time_ga
-        total_memory = memory_icp + memory_ga
         
-        return schedule_ga, makespan_ga, makespan_icp, total_time, total_memory
+        return schedule_ga, makespan_ga, makespan_icp, total_time
     
 
 def main():

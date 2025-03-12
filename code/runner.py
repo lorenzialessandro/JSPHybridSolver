@@ -64,25 +64,25 @@ def memory_tracker():
         stop_monitoring.set()
         monitor_thread.join(timeout=1.0)
 
-def run_and_log_experiment(instance, csv_file, seed, run_id=0, first_run=False):
+def run_and_log_experiment(instance, csv_file, seed, max_time_budget = 2700, run_id=0, first_run=False):
     """Run all solvers on an instance and log results to CSV file."""
     try:
         logger.info(f"Running experiment for instance {instance.name} (Run {run_id})")
         
         # 1. Run CP-SAT solver to find the optimal solution
         logger.info(f"[{instance.name}] [Run {run_id}] Running CP-SAT to find optimal solution...")
-        cp_opt_make, cp_opt_time, cp_opt_memory, cp_opt_status = run_cp_sat_find_optimal(instance, seed)
+        cp_opt_make, cp_opt_time, cp_opt_memory, cp_opt_status = run_cp_sat_find_optimal(instance, seed, max_time_budget)
         logger.info(f"[{instance.name}] [Run {run_id}] CP-SAT completed: makespan={cp_opt_make}, time={cp_opt_time:.2f}s")
 
         # 3. Run Hybrid solver with collector
         logger.info(f"[{instance.name}] [Run {run_id}] Running Hybrid solver with collector...")
-        hy_col_make, _, hy_col_tot_time, hy_col_tot_memory = run_hybrid_collector(instance, seed, cp_opt_time)
+        hy_col_make, _, hy_col_tot_time, hy_col_tot_memory = run_hybrid_collector(instance, seed, cp_opt_time, max_time_budget)
         diff_hy_col_cp_opt = (hy_col_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
         logger.info(f"[{instance.name}] [Run {run_id}] Hybrid collector completed: makespan={hy_col_make}, time={hy_col_tot_time:.2f}s")
         
         # 5. Run Hybrid solver
         logger.info(f"[{instance.name}] [Run {run_id}] Running Hybrid solver...")
-        hy_make, _, hy_tot_time, hy_tot_memory = run_hybrid(instance, seed, cp_opt_time)
+        hy_make, _, hy_tot_time, hy_tot_memory = run_hybrid(instance, seed, cp_opt_time, max_time_budget)
         diff_hy_cp_opt = (hy_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
         logger.info(f"[{instance.name}] [Run {run_id}] Hybrid completed: makespan={hy_make}, time={hy_tot_time:.2f}s")
         
@@ -114,12 +114,12 @@ def run_and_log_experiment(instance, csv_file, seed, run_id=0, first_run=False):
         return False
 
 # Runner functions 
-def run_hybrid_collector(instance, seed, time_budget):
+def run_hybrid_collector(instance, seed, time_budget, max_time_budget):
     try:
-        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=True, time_budget=time_budget, limit=0)
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=True, time_budget=time_budget, limit=0, max_time_budget = max_time_budget)
         
         with memory_tracker() as get_peak_usage:
-            schedule, makespan_ga, makespan_icp, tot_time, _ = hybrid_solver.solve()
+            schedule, makespan_ga, makespan_icp, tot_time = hybrid_solver.solve()
             memory_used = get_peak_usage()
             
         return makespan_ga, makespan_icp, tot_time, memory_used
@@ -127,12 +127,12 @@ def run_hybrid_collector(instance, seed, time_budget):
         logger.error(f"Error in hybrid collector for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
         
-def run_hybrid(instance, seed, time_budget):
+def run_hybrid(instance, seed, time_budget, max_time_budget):
     try:
-        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=False, time_budget=time_budget, limit=0)
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=False, time_budget=time_budget, limit=0, max_time_budget = max_time_budget)
         
         with memory_tracker() as get_peak_usage:
-            schedule, makespan_ga, makespan_icp, tot_time, _ = hybrid_solver.solve()
+            schedule, makespan_ga, makespan_icp, tot_time = hybrid_solver.solve()
             memory_used = get_peak_usage()
             
         return makespan_ga, makespan_icp, tot_time, memory_used
@@ -140,13 +140,13 @@ def run_hybrid(instance, seed, time_budget):
         logger.error(f"Error in hybrid solver for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
 
-def run_cp_sat_find_optimal(instance, seed):
+def run_cp_sat_find_optimal(instance, seed, max_time_budget):
     try:
-        cp_solver = ICPSolver(instance)
+        cp_solver = ICPSolver(instance, max_time_budget)
         cp_solver.solver.parameters.random_seed = seed
         
         with memory_tracker() as get_peak_usage:
-            schedule, makespan, solver, status, cp_time, _ = cp_solver.solve()
+            schedule, makespan, solver, status, cp_time = cp_solver.solve()
             memory_used = get_peak_usage()
             
         return makespan, cp_time, memory_used, status
@@ -171,7 +171,7 @@ def create_csv_file(csv_path):
         return True
     return False
 
-def process_instance(file_path, csv_file, seed_base, num_runs, worker_id):
+def process_instance(file_path, csv_file, max_time_budget, seed_base, num_runs, worker_id):
     """Process a single instance file multiple times with different seeds."""
     instance = load_instance(file_path)
     instance_name = os.path.basename(file_path)
@@ -183,7 +183,7 @@ def process_instance(file_path, csv_file, seed_base, num_runs, worker_id):
         random.seed(run_seed)
         
         logger.info(f"Worker {worker_id}: Starting run {run_id+1}/{num_runs} for instance {instance_name} with seed {run_seed}")
-        success = run_and_log_experiment(instance, csv_file, run_seed, run_id=run_id, first_run=(run_id==0 and worker_id==0))
+        success = run_and_log_experiment(instance, csv_file, run_seed, max_time_budget=max_time_budget, run_id=run_id, first_run=(run_id==0 and worker_id==0))
         if success:
             success_count += 1
             
@@ -195,6 +195,7 @@ def main():
     parser.add_argument('--folder', type=str, help='Path to the folder containing the instances', default='../instances/ClassicBenchmark')
     parser.add_argument('--instance', type=str, help='Path to a specific instance file')
     parser.add_argument('--csv_file', type=str, default=f'csv/results_{datetime.now().strftime("%Y%m%d-%H%M%S")}.csv', help='CSV file to log the results')
+    parser.add_argument('--max_time_budget', type=int, help='Max time budget for each solver in seconds', default=2700)
     parser.add_argument('--seed', type=int, help='Base random seed', default=10)
     parser.add_argument('--num_runs', type=int, help='Number of runs per instance with different seeds', default=1)
     parser.add_argument('--workers', type=int, help='Number of parallel workers (default: number of CPU cores)', default=None)
@@ -218,7 +219,7 @@ def main():
             run_seed = args.seed + run_id
             random.seed(run_seed)
             logger.info(f"Starting run {run_id+1}/{args.num_runs} for instance {instance.name} with seed {run_seed}")
-            run_and_log_experiment(instance, args.csv_file, run_seed, run_id=run_id, first_run=(run_id==0))
+            run_and_log_experiment(instance, args.csv_file, run_seed, max_time_budget = args.max_time_budget, run_id=run_id, first_run=(run_id==0))
     
     
     # Run for all instances in the folder with parallelization
@@ -246,6 +247,7 @@ def main():
                     process_instance, 
                     file_path, 
                     args.csv_file, 
+                    args.max_time_budget,
                     args.seed, 
                     args.num_runs,
                     i

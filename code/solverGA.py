@@ -5,7 +5,6 @@ from typing import List, Dict, Tuple
 from inspyred import ec
 import argparse
 import time
-import tracemalloc
 
 from utils import *
 
@@ -217,11 +216,9 @@ class GASolver():
     def solve(self, args):
         '''Solve JSP instance using GA'''
         
-        # Track time and memory usage
+        # Track time
         start_time_t = time.time()
-        tracemalloc.start()
-        snapshot1 = tracemalloc.take_snapshot()
-        
+
         ga = ec.GA(random=self.prng)
         ga.observer = self.observer
         # ga.terminator = self.time_and_generation_terminator
@@ -255,15 +252,11 @@ class GASolver():
             tournament_size=5,
             patience = 3
         )
-        
-        snapshot2 = tracemalloc.take_snapshot()
-        end_time_t = time.time()
-        
-        ga_time = end_time_t - start_time_t
-        ga_stats = snapshot2.compare_to(snapshot1, 'lineno')
-        ga_memory = sum(stat.size_diff for stat in ga_stats)
 
-        return self.best_schedule, self.best_makespan, ga_time, ga_memory
+        end_time_t = time.time()
+        ga_time = end_time_t - start_time_t
+
+        return self.best_schedule, self.best_makespan, ga_time
 
     def multi_custom_crossover(self, random, candidates, args):
         """Job-preserving multi-point crossover operator for job ID sequences"""
@@ -512,6 +505,3 @@ def main():
     plt.title("Makespan over Generations")
     plt.savefig(f'output/{args.output}_makespan.png')
 
-
-if __name__ == '__main__':
-    main()
