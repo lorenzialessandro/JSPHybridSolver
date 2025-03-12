@@ -3,7 +3,7 @@ import numpy as np
 from typing import List, Dict, Tuple 
 import argparse
 import random
-
+import psutil
 from solverICP import *             # JSP solver using OR-Tools CP-SAT
 from solverICP_limiter import *     # JSP solver using OR-Tools CP-SAT with solution limit
 from solverICP_collect import *     # JSP solver using OR-Tools CP-SAT with solution collection

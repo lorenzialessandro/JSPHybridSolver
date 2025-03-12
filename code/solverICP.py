@@ -4,7 +4,7 @@ from typing import List, Dict, Tuple
 from ortools.sat.python import cp_model
 import time             # Time tracking
 import argparse
-
+import psutil
 from utils import *
 
 class ICPSolver:
