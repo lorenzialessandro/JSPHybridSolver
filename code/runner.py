@@ -10,7 +10,6 @@ from contextlib import contextmanager
 import concurrent.futures
 import threading
 import tracemalloc
-import psutils
 
 from solverHybrid import *
 from utils import *
@@ -101,32 +100,28 @@ def run_and_log_experiment(instance, csv_file, seed, run_id=0, first_run=False):
 
 # Runner functions 
 
-# def run_hybrid_limiter(instance, seed, time_budget, limit):
-#     try:
-#         hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=True, use_collector = False, time_budget=time_budget, limit=limit)
-#         #tracemalloc.start()
-#         p1 = psutil.Process()
-#         mb1 = process.memory_info().rss
-#         schedule, makespan_ga, makespan_icp, tot_time, _ = hybrid_solver.solve()
-#         ma1  = process.memory_info().rss
-#         # current, peak = tracemalloc.get_traced_memory()
-#         # tracemalloc.stop()
-#         return makespan_ga, makespan_icp, tot_time, (ma1-mb1)
-#     except Exception as e:
-#         logger.error(f"Error in hybrid limiter for {instance.name}: {str(e)}")
-#         return float('inf'), float('inf'), 0, 0
+def run_hybrid_limiter(instance, seed, time_budget, limit):
+    try:
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=True, use_collector = False, time_budget=time_budget, limit=limit)
+        tracemalloc.start()
+        schedule, makespan_ga, makespan_icp, tot_time, tot_memory = hybrid_solver.solve()
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.clear_traces()
+        tracemalloc.stop()
+        return makespan_ga, makespan_icp, tot_time, peak
+    except Exception as e:
+        logger.error(f"Error in hybrid limiter for {instance.name}: {str(e)}")
+        return float('inf'), float('inf'), 0, 0
 
 def run_hybrid_collector(instance, seed, time_budget):
     try:
         hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector = True, time_budget=time_budget, limit=0)
-        # tracemalloc.start()
-        p2 = psutil.Process()
-        mb2 = p2.memory_info().rss
+        tracemalloc.start()
         schedule, makespan_ga, makespan_icp, tot_time, tot_memory = hybrid_solver.solve()
-        ma2  = p2.memory_info().rss
-        # current, peak = tracemalloc.get_traced_memory()
-        # tracemalloc.stop()
-        return makespan_ga, makespan_icp, tot_time, (ma2-mb2)
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.clear_traces()
+        tracemalloc.stop()
+        return makespan_ga, makespan_icp, tot_time, peak
     except Exception as e:
         logger.error(f"Error in hybrid collector for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
@@ -134,45 +129,42 @@ def run_hybrid_collector(instance, seed, time_budget):
 def run_hybrid(instance, seed, time_budget):
     try:
         hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector = False, time_budget=time_budget, limit=0)
-        # tracemalloc.start()
-        p3 = psutil.Process()
-        mb3 = p3.memory_info().rss
-        schedule, makespan_ga, makespan_icp, tot_time, _ = hybrid_solver.solve()
-        ma3  = p3.memory_info().rss
-        # current, peak = tracemalloc.get_traced_memory()
-        # tracemalloc.stop()
-        return makespan_ga, makespan_icp, tot_time, (ma3-mb3)
+        tracemalloc.start()
+        schedule, makespan_ga, makespan_icp, tot_time, tot_memory = hybrid_solver.solve()
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.clear_traces()
+        tracemalloc.stop()
+        return makespan_ga, makespan_icp, tot_time, peak
     except Exception as e:
         logger.error(f"Error in hybrid solver for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
 
         
-# def run_ga(instance, seed, time_budget):
-#     try:
-#         ga_solver = GASolver(instance, seed=seed, hybrid=False)
-#         ga_solver.max_time = time_budget
-#         tracemalloc.start()
-#         schedule, makespan, ga_time, ga_memory = ga_solver.solve(args=None)
-#         current, peak = tracemalloc.get_traced_memory()
-#         tracemalloc.stop()
-#         return makespan, ga_time, peak
-#     except Exception as e:
-#         logger.error(f"Error in GA solver for {instance.name}: {str(e)}")
-#         return float('inf'), 0, 0
+def run_ga(instance, seed, time_budget):
+    try:
+        ga_solver = GASolver(instance, seed=seed, hybrid=False)
+        ga_solver.max_time = time_budget
+        tracemalloc.start()
+        schedule, makespan, ga_time, ga_memory = ga_solver.solve(args=None)
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.clear_traces()
+        tracemalloc.stop()
+        return makespan, ga_time, peak
+    except Exception as e:
+        logger.error(f"Error in GA solver for {instance.name}: {str(e)}")
+        return float('inf'), 0, 0
 
 def run_cp_sat_find_optimal(instance, seed):
     try:
         cp_solver = ICPSolver(instance)
         cp_solver.solver.parameters.random_seed = seed
-        # tracemalloc.start()
-        p4 = psutil.Process()
-        mb4 = p4.memory_info().rss
+        tracemalloc.start()
         schedule, makespan, solver, status, cp_time, old_cp_memory = cp_solver.solve()
-        ma4  = p4.memory_info().rss
-        # current, peak = tracemalloc.get_traced_memory()
-        # tracemalloc.stop()
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.clear_traces()
+        tracemalloc.stop()
 
-        return makespan, cp_time, (ma4-mb4), status
+        return makespan, cp_time, peak, status
     except Exception as e:
         logger.error(f"Error in CP-SAT solver for {instance.name}: {str(e)}")
         return float('inf'), 0, 0, "ERROR"
