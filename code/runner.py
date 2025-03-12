@@ -64,7 +64,7 @@ def memory_tracker():
         stop_monitoring.set()
         monitor_thread.join(timeout=1.0)
 
-def run_and_log_experiment(instance, csv_file, seed, max_time_budget = 2700, run_id=0, first_run=False):
+def run_and_log_experiment(instance, csv_file, seed, max_time_budget, run_id=0, first_run=False):
     """Run all solvers on an instance and log results to CSV file."""
     try:
         logger.info(f"Running experiment for instance {instance.name} (Run {run_id})")
