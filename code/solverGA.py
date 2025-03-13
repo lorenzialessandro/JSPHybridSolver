@@ -5,6 +5,7 @@ from typing import List, Dict, Tuple
 from inspyred import ec
 import argparse
 import time
+import tracemalloc
 
 from utils import *
 
@@ -234,6 +235,8 @@ class GASolver():
             # print("Using initial population from args")
             initial_population = args['initial_population']
 
+        # Track memory
+        tracemalloc.start()
         # Run GA solver
         final_pop = ga.evolve(
             generator=self.generator,
@@ -253,10 +256,13 @@ class GASolver():
             patience = 3
         )
 
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        
         end_time_t = time.time()
         ga_time = end_time_t - start_time_t
 
-        return self.best_schedule, self.best_makespan, ga_time
+        return self.best_schedule, self.best_makespan, ga_time, peak
 
     def multi_custom_crossover(self, random, candidates, args):
         """Job-preserving multi-point crossover operator for job ID sequences"""

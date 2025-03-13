@@ -10,8 +10,7 @@ from contextlib import contextmanager
 import concurrent.futures
 import threading
 import psutil  
-import tracemalloc
-from memory_profiler import memory_usage
+
 from solverHybrid import *
 from utils import *
 
@@ -121,34 +120,15 @@ def run_and_log_experiment(instance, csv_file, seed, max_time_budget, run_id=0, 
         return False
 
 # Runner functions 
-
 def run_hybrid_collector(instance, seed, time_budget, max_time_budget):
     try:
-        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=True, 
-                                    time_budget=time_budget, limit=0, max_time_budget=max_time_budget)
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=True, time_budget=time_budget, limit=0, max_time_budget = max_time_budget)
         
-        # Function to measure memory usage of
-        def solve_with_memory_profile():
-            result = hybrid_solver.solve()
-            return result
-        
-        # Use memory_usage to track memory during execution
-        # The interval parameter determines how frequently memory is sampled (in seconds)
-        memory_result = memory_usage(
-            (solve_with_memory_profile, [], {}),
-            interval=0.1,
-            timeout=None,
-            retval=True
-        )
-        
-        # Properly extract results - memory_usage returns (memory_list, return_value)
-        mem_usage, result = memory_result
-        schedule, makespan_ga, makespan_icp, tot_time = result
-        
-        # Get the peak memory usage in MiB
-        memory_used = max(mem_usage) if mem_usage else 0
+        with memory_tracker() as get_peak_usage:
+            schedule, makespan_ga, makespan_icp, tot_time, ga_memory = hybrid_solver.solve()
+            memory_used = get_peak_usage()
             
-        return makespan_ga, makespan_icp, tot_time, memory_used
+        return makespan_ga, makespan_icp, tot_time, (memory_used + ga_memory)
     except Exception as e:
         logger.error(f"Error in hybrid collector for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
@@ -157,27 +137,11 @@ def run_hybrid(instance, seed, time_budget, max_time_budget):
     try:
         hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=False, time_budget=time_budget, limit=0, max_time_budget = max_time_budget)
         
-        # Function to measure memory usage of
-        def solve_with_memory_profile():
-            result = hybrid_solver.solve()
-            return result
-        
-        # Use memory_usage to track memory during execution
-        # The interval parameter determines how frequently memory is sampled (in seconds)
-        memory_result = memory_usage(
-            (solve_with_memory_profile, [], {}),
-            interval=0.1,
-            timeout=None,
-            retval=True
-        )
+        with memory_tracker() as get_peak_usage:
+            schedule, makespan_ga, makespan_icp, tot_time, ga_memory = hybrid_solver.solve()
+            memory_used = get_peak_usage()
             
-        # Properly extract results - memory_usage returns (memory_list, return_value)
-        mem_usage, result = memory_result
-        schedule, makespan_ga, makespan_icp, tot_time = result
-        
-        memory_used = max(mem_usage) if mem_usage else 0
-            
-        return makespan_ga, makespan_icp, tot_time, memory_used
+        return makespan_ga, makespan_icp, tot_time, (memory_used + ga_memory)
     except Exception as e:
         logger.error(f"Error in hybrid solver for {instance.name}: {str(e)}")
         return float('inf'), float('inf'), 0, 0
@@ -187,26 +151,9 @@ def run_cp_sat_find_optimal(instance, seed, max_time_budget):
         cp_solver = ICPSolver(instance, max_time_budget)
         cp_solver.solver.parameters.random_seed = seed
         
-        # Function to measure memory usage of
-        def solve_with_memory_profile():
-            status = cp_solver.solve()
-            return status
-        
-        # Use memory_usage to track memory during execution
-        # The interval parameter determines how frequently memory is sampled (in seconds)
-        memory_result = memory_usage(
-            (solve_with_memory_profile, [], {}),
-            interval=0.1,
-            timeout=None,
-            retval=True
-        )
-        
-        # Properly extract results - memory_usage returns (memory_list, return_value)
-        mem_usage, result = memory_result
-        schedule, makespan, solver, status, cp_time = result
-        
-        # Get the peak memory usage in MiB
-        memory_used = max(mem_usage) if mem_usage else 0
+        with memory_tracker() as get_peak_usage:
+            schedule, makespan, solver, status, cp_time = cp_solver.solve()
+            memory_used = get_peak_usage()
             
         return makespan, cp_time, memory_used, status
     except Exception as e:
@@ -217,30 +164,9 @@ def run_ga(instance, seed, time_budget):
     try:
         ga_solver = GASolver(instance, seed=seed, hybrid=False)
         ga_solver.max_time = time_budget
-        
-        # Function to measure memory usage of
-        def solve_with_memory_profile():
-            result = ga_solver.solve(args=None)
-            return result
-        
-        # Use memory_usage to track memory during execution
-        # The interval parameter determines how frequently memory is sampled (in seconds)
-        memory_result = memory_usage(
-            (solve_with_memory_profile, [], {}),
-            interval=0.1,
-            timeout=None,
-            retval=True
-        )
-        
-        # Properly extract results - memory_usage returns (memory_list, return_value)
-        mem_usage, result = memory_result
-        schedule, makespan, tot_time = result
-        
-        # Get the peak memory usage in MiB
-        memory_used = max(mem_usage) if mem_usage else 0
-        
-        return makespan, tot_time, memory_used  
-    
+        schedule, makespan, tot_time, memory_used = ga_solver.solve(args=None)
+            
+        return makespan, tot_time, memory_used
     except Exception as e:
         logger.error(f"Error in GA solver for {instance.name}: {str(e)}")
         return float('inf'), 0, 0

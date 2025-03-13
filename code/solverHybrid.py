@@ -106,10 +106,10 @@ class HybridSolver:
             schedule_icp, makespan_icp, solver_icp, status_icp, time_icp = self.cp_solver.solve() # || CP-SAT SOLVER ||
             
         if status_icp == cp_model.OPTIMAL:  # If the solution found by CP-SAT solver is optimal, return it (no need to use GA solver)
-            return schedule_icp, makespan_icp, makespan_icp, time_icp
+            return schedule_icp, makespan_icp, makespan_icp, time_icp, 0
         
         if status_icp == cp_model.UNKNOWN: # If CP-SAT solver could not find a solution, return None
-            return None, 0, 0, 0
+            return None, 0, 0, 0, 0
             
         # Collect chromosome(s) from the solution(s) found by CP-SAT solver
         chromosomes = []
@@ -140,12 +140,12 @@ class HybridSolver:
     
         # Solve using GA solver
         self.ga_solver.max_time = self.ga_solver.max_time - time_icp # Set remaining time budget for GA solver (TODO: add overhead for creating initial population)
-        schedule_ga, makespan_ga, time_ga = self.ga_solver.solve(args) # || GA SOLVER ||
+        schedule_ga, makespan_ga, time_ga, memory_ga = self.ga_solver.solve(args) # || GA SOLVER ||
         
         # Results
         total_time = time_icp + time_ga
         
-        return schedule_ga, makespan_ga, makespan_icp, total_time
+        return schedule_ga, makespan_ga, makespan_icp, total_time, memory_ga
     
 
 def main():
