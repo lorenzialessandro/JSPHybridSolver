@@ -200,10 +200,9 @@ class GASolver():
         best = min(population, key=lambda l: l.fitness)
         schedule, makespan = self.decoder(best.candidate, args)
         # print(f"Generation {num_generations}: makespan = {makespan}")
-
-        if makespan < self.best_makespan:
-            self.best_makespan = makespan
-            if validate_schedule(schedule):
+        if self.validate_schedule(schedule):
+            if makespan < self.best_makespan:
+                self.best_makespan = makespan
                 self.best_schedule = schedule
 
         if num_generations % 100 == 0:
