@@ -203,7 +203,8 @@ class GASolver():
 
         if makespan < self.best_makespan:
             self.best_makespan = makespan
-            self.best_schedule = schedule
+            if validate_schedule(schedule):
+                self.best_schedule = schedule
 
         if num_generations % 100 == 0:
             self.history_best.append(self.best_makespan) # track best makespan over generations on 100th generation
