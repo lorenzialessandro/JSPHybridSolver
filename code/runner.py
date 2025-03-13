@@ -74,17 +74,22 @@ def run_and_log_experiment(instance, csv_file, seed, max_time_budget, run_id=0, 
         cp_opt_make, cp_opt_time, cp_opt_memory, cp_opt_status = run_cp_sat_find_optimal(instance, seed, max_time_budget)
         logger.info(f"[{instance.name}] [Run {run_id}] CP-SAT completed: makespan={cp_opt_make}, time={cp_opt_time:.2f}s")
 
-        # 3. Run Hybrid solver with collector
+        # 2. Run Hybrid solver with collector
         logger.info(f"[{instance.name}] [Run {run_id}] Running Hybrid solver with collector...")
         hy_col_make, _, hy_col_tot_time, hy_col_tot_memory = run_hybrid_collector(instance, seed, cp_opt_time, max_time_budget)
         diff_hy_col_cp_opt = (hy_col_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
         logger.info(f"[{instance.name}] [Run {run_id}] Hybrid collector completed: makespan={hy_col_make}, time={hy_col_tot_time:.2f}s")
         
-        # 5. Run Hybrid solver
+        # 3. Run Hybrid solver
         logger.info(f"[{instance.name}] [Run {run_id}] Running Hybrid solver...")
         hy_make, _, hy_tot_time, hy_tot_memory = run_hybrid(instance, seed, cp_opt_time, max_time_budget)
         diff_hy_cp_opt = (hy_make - cp_opt_make) / cp_opt_make if cp_opt_make else float('inf')
         logger.info(f"[{instance.name}] [Run {run_id}] Hybrid completed: makespan={hy_make}, time={hy_tot_time:.2f}s")
+        
+        # 4. Run GA solver
+        logger.info(f"[{instance.name}] [Run {run_id}] Running GA solver...")
+        ga_make, ga_time, ga_memory = run_ga(instance, seed, max_time_budget)
+        logger.info(f"[{instance.name}] [Run {run_id}] GA completed: makespan={ga_make}, time={ga_time:.2f}s")
         
         # Thread-safe CSV writing
         with csv_lock:
@@ -96,7 +101,8 @@ def run_and_log_experiment(instance, csv_file, seed, max_time_budget, run_id=0, 
                     instance.name, run_id, seed,
                     cp_opt_make, cp_opt_time, cp_opt_memory, cp_opt_status,
                     hy_col_make, hy_col_tot_time, hy_col_tot_memory, diff_hy_col_cp_opt,
-                    hy_make, hy_tot_time, hy_tot_memory, diff_hy_cp_opt
+                    hy_make, hy_tot_time, hy_tot_memory, diff_hy_cp_opt,
+                    ga_make, ga_time, ga_memory
                 ])
         
         logger.info(f"[{instance.name}] [Run {run_id}] Experiment completed and results saved")
@@ -154,6 +160,20 @@ def run_cp_sat_find_optimal(instance, seed, max_time_budget):
         logger.error(f"Error in CP-SAT solver for {instance.name}: {str(e)}")
         return float('inf'), 0, 0, "ERROR"
     
+def run_ga(instance, seed, time_budget):
+    try:
+        ga_solver = GASolver(instance, seed=seed, hybrid=False)
+        ga_solver.max_time = time_budget
+        
+        with memory_tracker() as get_peak_usage:
+            schedule, makespan, tot_time = ga_solver.solve(args=None)
+            memory_used = get_peak_usage()
+            
+        return makespan, tot_time, memory_used
+    except Exception as e:
+        logger.error(f"Error in GA solver for {instance.name}: {str(e)}")
+        return float('inf'), 0, 0
+    
 def create_csv_file(csv_path):
     """Create CSV file with headers if it doesn't exist."""
     # Ensure directory exists
@@ -166,7 +186,8 @@ def create_csv_file(csv_path):
                 'instance', 'run_id', 'seed',
                 'cp_opt_make', 'cp_opt_time', 'cp_opt_memory', 'cp_opt_status',
                 'hy_col_make', 'hy_col_tot_time', 'hy_col_tot_memory', 'diff_hy_col_cp_opt',
-                'hy_make', 'hy_tot_time', 'hy_tot_memory', 'diff_hy_cp_opt'
+                'hy_make', 'hy_tot_time', 'hy_tot_memory', 'diff_hy_cp_opt',
+                'ga_make', 'ga_time', 'ga_memory'
             ])
         return True
     return False
