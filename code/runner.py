@@ -11,6 +11,7 @@ import concurrent.futures
 import threading
 import psutil  
 
+
 from solverHybrid import *
 from utils import *
 
@@ -123,6 +124,7 @@ def run_and_log_experiment(instance, csv_file, seed, max_time_budget, run_id=0, 
 def run_hybrid_collector(instance, seed, time_budget, max_time_budget):
     try:
         hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=True, time_budget=time_budget, limit=0, max_time_budget = max_time_budget)
+        hybrid_solver = HybridSolver(instance, seed=seed, use_limiter=False, use_collector=True, time_budget=time_budget, limit=0, max_time_budget = max_time_budget)
         
         with memory_tracker() as get_peak_usage:
             schedule, makespan_ga, makespan_icp, tot_time, ga_memory = hybrid_solver.solve()
@@ -151,6 +153,9 @@ def run_cp_sat_find_optimal(instance, seed, max_time_budget):
         cp_solver = ICPSolver(instance, max_time_budget)
         cp_solver.solver.parameters.random_seed = seed
         
+        with memory_tracker() as get_peak_usage:
+            schedule, makespan, solver, status, cp_time = cp_solver.solve()
+            memory_used = get_peak_usage()
         with memory_tracker() as get_peak_usage:
             schedule, makespan, solver, status, cp_time = cp_solver.solve()
             memory_used = get_peak_usage()
